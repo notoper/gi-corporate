@@ -318,7 +318,7 @@ export default function SecretaryOS() {
       secName: "", secExpiry: "", secStatus: "",
       addrExpiry: "", addrStatus: "",
       work: "", ar2024: "", ar2025: "", ya2025: "", ya2026: "", ltr: "",
-      opsFee: "", bank: "", source: "手动新增", customTodos: "",
+      opsFee: "", bank: "", source: "手动新增", customTodos: "", previousNames: "",
     };
     setData(prev => [...prev, record]);
     addLog("新增公司", newCompany.trim(), "", "", newUen.trim() ? `UEN: ${newUen.trim()}` : "");
