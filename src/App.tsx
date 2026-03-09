@@ -78,6 +78,7 @@ const mapRow = (row: Record<string, string>) => {
     bank: g(["银行", "bank", "账户"]),
     source: g(["数据来源", "来源"]),
     customTodos: "",
+    previousNames: "",
   };
 };
 
@@ -118,6 +119,7 @@ const dbToRow = (db: any): CompanyRow => ({
   bank: db.bank || "",
   source: db.source || "",
   customTodos: db.custom_todos || "",
+  previousNames: db.previous_names || "",
 });
 
 const rowToDb = (row: CompanyRow) => ({
@@ -153,6 +155,7 @@ const rowToDb = (row: CompanyRow) => ({
   bank: row.bank || "",
   source: row.source || "",
   custom_todos: row.customTodos || "",
+  previous_names: row.previousNames || "",
 });
 
 type LogEntry = { id: number; time: string; action: string; company: string; field: string; oldVal: string; newVal: string };
@@ -623,6 +626,28 @@ export default function SecretaryOS() {
     const [editing, setEditing] = useState<string | null>(null);
     const [editVal, setEditVal] = useState("");
     const [confirmDelete, setConfirmDelete] = useState(false);
+    const [editingCompany, setEditingCompany] = useState(false);
+    const [newCompanyName, setNewCompanyName] = useState("");
+    const [confirmingRename, setConfirmingRename] = useState(false);
+
+    let previousNames: string[] = [];
+    try { previousNames = JSON.parse(r.previousNames || "[]"); } catch { previousNames = []; }
+
+    const handleRenameConfirm = () => {
+      const oldName = r.company;
+      const newName = newCompanyName.trim();
+      if (!newName || newName === oldName) { setEditingCompany(false); setConfirmingRename(false); return; }
+      const updatedPrevNames = JSON.stringify([...previousNames, oldName]);
+      const updated = { ...r, company: newName, previousNames: updatedPrevNames };
+      setSelected(updated);
+      setData(prev => prev.map(item => item._id === updated._id ? updated : item));
+      setDetailSaved(true);
+      setTimeout(() => setDetailSaved(false), 1500);
+      addLog("改名", oldName, "公司名称", oldName, newName);
+      void (async () => { try { await supabase.from("companies").update(rowToDb(updated)).eq("id", String(updated._id)); } catch (e) { console.error("Update failed:", e); } })();
+      setEditingCompany(false);
+      setConfirmingRename(false);
+    };
 
     const startEdit = (fieldKey: string, currentVal: string) => { setEditing(fieldKey); setEditVal(currentVal || ""); };
 
@@ -762,13 +787,55 @@ export default function SecretaryOS() {
           {detailSaved && <span style={{ fontSize: 13, color: colors.green, fontWeight: 600, background: "#F0FDF4", padding: "6px 14px", borderRadius: 8 }}>✓ 已保存</span>}
         </div>
         <Card>
-          <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
-            <div style={{ width: 50, height: 50, borderRadius: 14, background: colors.accent, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: 20, flexShrink: 0 }}>{(r.company || "?")[0]}</div>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 20 }}>
+            <div style={{ width: 50, height: 50, borderRadius: 14, background: colors.accent, display: "flex", alignItems: "center", justifyContent: "center", color: "#fff", fontWeight: 800, fontSize: 20, flexShrink: 0, marginTop: 2 }}>{(r.company || "?")[0]}</div>
             <div style={{ flex: 1 }}>
-              <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>{r.company}</h2>
-              <div style={{ fontSize: 13, color: colors.muted }}>UEN: {r.uen || "—"}</div>
+              {editingCompany ? (
+                <div>
+                  <input autoFocus value={newCompanyName} onChange={e => setNewCompanyName(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter" && !e.nativeEvent.isComposing && newCompanyName.trim() && newCompanyName.trim() !== r.company) setConfirmingRename(true); if (e.key === "Escape") setEditingCompany(false); }}
+                    style={{ width: "100%", fontSize: 18, fontWeight: 800, padding: "6px 10px", borderRadius: 8, border: "2px solid #0C0A09", outline: "none", fontFamily: FONT, boxSizing: "border-box", marginBottom: 8 }} />
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => { if (newCompanyName.trim() && newCompanyName.trim() !== r.company) setConfirmingRename(true); }} disabled={!newCompanyName.trim() || newCompanyName.trim() === r.company}
+                      style={{ padding: "5px 14px", borderRadius: 8, border: "none", background: newCompanyName.trim() && newCompanyName.trim() !== r.company ? "#0C0A09" : "#D6D3D1", color: "#fff", fontSize: 13, fontWeight: 700, cursor: newCompanyName.trim() && newCompanyName.trim() !== r.company ? "pointer" : "not-allowed" }}>确认改名</button>
+                    <button onClick={() => setEditingCompany(false)} style={{ padding: "5px 14px", borderRadius: 8, border: "1px solid #E7E5E4", background: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer" }}>取消</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>{r.company}</h2>
+                  <span onClick={() => { setNewCompanyName(r.company); setEditingCompany(true); }} title="修改公司名"
+                    style={{ cursor: "pointer", fontSize: 14, color: "#A8A29E", padding: "2px 6px", borderRadius: 6, lineHeight: 1 }}>✏️</span>
+                </div>
+              )}
+              <div style={{ fontSize: 13, color: colors.muted, marginTop: editingCompany ? 8 : 4 }}>UEN: {r.uen || "—"}</div>
+              {previousNames.length > 0 && (
+                <div style={{ fontSize: 12, color: "#A8A29E", marginTop: 4 }}>
+                  曾用名：{previousNames.map((n, i) => <span key={i} style={{ marginRight: 6 }}>{n}{i < previousNames.length - 1 ? "、" : ""}</span>)}
+                </div>
+              )}
             </div>
           </div>
+          {confirmingRename && (
+            <div onClick={() => setConfirmingRename(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 16 }}>
+              <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 20, maxWidth: 480, width: "100%", padding: 28 }}>
+                <h3 style={{ fontSize: 18, fontWeight: 800, marginBottom: 20 }}>⚠️ 确认公司改名</h3>
+                <div style={{ background: "#FAFAF9", borderRadius: 12, padding: "14px 16px", marginBottom: 16 }}>
+                  <div style={{ fontSize: 12, color: "#A8A29E", marginBottom: 4 }}>原公司名</div>
+                  <div style={{ fontSize: 15, fontWeight: 700 }}>{r.company}</div>
+                </div>
+                <div style={{ background: "#F0FDF4", borderRadius: 12, padding: "14px 16px", marginBottom: 20, border: "1px solid #BBF7D0" }}>
+                  <div style={{ fontSize: 12, color: "#16A34A", marginBottom: 4 }}>新公司名</div>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: "#16A34A" }}>{newCompanyName.trim()}</div>
+                </div>
+                <p style={{ fontSize: 13, color: "#78716C", marginBottom: 20 }}>确认后，原公司名将记录为"曾用名"，此操作不可撤销。</p>
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                  <button onClick={() => setConfirmingRename(false)} style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid #E7E5E4", background: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>取消</button>
+                  <button onClick={handleRenameConfirm} style={{ padding: "10px 24px", borderRadius: 10, border: "none", background: "#0C0A09", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 14 }}>确认改名</button>
+                </div>
+              </div>
+            </div>
+          )}
           <div style={{ background: "#FFFBEB", borderRadius: 10, padding: "10px 16px", marginBottom: 20, fontSize: 13, color: "#92400E" }}>
             💡 点击任意字段即可编辑，修改后自动保存
           </div>
