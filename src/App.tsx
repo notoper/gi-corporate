@@ -190,7 +190,6 @@ export default function SecretaryOS() {
   const [importText, setImportText] = useState("");
   const [tab, setTab] = useState("all");
   const importRef = useRef<HTMLTextAreaElement>(null);
-  const composingRef = useRef(false); // React 19 IME fix: track composition state
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
   const [detailSaved, setDetailSaved] = useState(false);
@@ -431,8 +430,8 @@ export default function SecretaryOS() {
         <div onClick={() => setShowNewForm(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 20, maxWidth: 480, width: "100%", padding: 28 }}>
             <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 20 }}>➕ 新增公司</h2>
-            <input value={newCompany} onChange={e => { if (!composingRef.current) setNewCompany(e.target.value); }} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={e => { composingRef.current = false; setNewCompany((e.target as HTMLInputElement).value); }} onKeyDown={e => e.key === "Enter" && !e.nativeEvent.isComposing && handleAddCompany()} placeholder="公司名称 *" autoFocus style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `2px solid ${colors.border}`, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: FONT, marginBottom: 12 }} />
-            <input value={newUen} onChange={e => { if (!composingRef.current) setNewUen(e.target.value); }} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={e => { composingRef.current = false; setNewUen((e.target as HTMLInputElement).value); }} onKeyDown={e => e.key === "Enter" && !e.nativeEvent.isComposing && handleAddCompany()} placeholder="UEN（选填）" style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `2px solid ${colors.border}`, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: FONT, marginBottom: 20 }} />
+            <input value={newCompany} onChange={e => setNewCompany(e.target.value)} onKeyDown={e => e.key === "Enter" && !e.nativeEvent.isComposing && handleAddCompany()} placeholder="公司名称 *" autoFocus style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `2px solid ${colors.border}`, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: FONT, marginBottom: 12 }} />
+            <input value={newUen} onChange={e => setNewUen(e.target.value)} onKeyDown={e => e.key === "Enter" && !e.nativeEvent.isComposing && handleAddCompany()} placeholder="UEN（选填）" style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `2px solid ${colors.border}`, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: FONT, marginBottom: 20 }} />
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button onClick={() => setShowNewForm(false)} style={{ padding: "10px 20px", borderRadius: 10, border: `1px solid ${colors.border}`, background: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>取消</button>
               <button onClick={handleAddCompany} disabled={!newCompany.trim()} style={{ padding: "10px 24px", borderRadius: 10, border: "none", cursor: newCompany.trim() ? "pointer" : "not-allowed", background: newCompany.trim() ? "#16A34A" : "#D6D3D1", color: "#fff", fontWeight: 700, fontSize: 14 }}>创建并填写详情</button>
@@ -450,7 +449,7 @@ export default function SecretaryOS() {
         <p style={{ fontSize: 13, color: colors.muted, marginBottom: 16 }}>
           打开 <strong>SecretaryOS_完整数据库.xlsx</strong> → 选中"完整客户数据库"工作表所有数据（包含第一行表头） → Ctrl+C 复制 → 粘贴到下方
         </p>
-        <textarea ref={importRef} value={importText} onChange={e => { if (!composingRef.current) setImportText(e.target.value); }} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={e => { composingRef.current = false; setImportText((e.target as HTMLTextAreaElement).value); }}
+        <textarea ref={importRef} value={importText} onChange={e => setImportText(e.target.value)}
           placeholder="在此粘贴..."
           style={{ width: "100%", height: 200, padding: 14, borderRadius: 12, border: `2px solid ${colors.border}`, fontFamily: "monospace", fontSize: 12, resize: "vertical", outline: "none", boxSizing: "border-box" }}
         />
@@ -667,11 +666,9 @@ export default function SecretaryOS() {
           </div>
           {isEditingField ? (
             <input autoFocus value={editVal}
-              onChange={e => { if (!composingRef.current) setEditVal(e.target.value); }}
-              onCompositionStart={() => { composingRef.current = true; }}
-              onCompositionEnd={e => { composingRef.current = false; setEditVal((e.target as HTMLInputElement).value); }}
+              onChange={e => setEditVal(e.target.value)}
               onKeyDown={e => handleKeyDown(e, fieldKey)}
-              onBlur={e => { if (!composingRef.current) doSave(fieldKey, e.target.value); }}
+              onBlur={e => doSave(fieldKey, e.target.value)}
               style={{ width: "100%", fontSize: 14, fontWeight: 600, padding: "4px 8px", border: "none", borderRadius: 6, outline: "none", background: "#fff", fontFamily: FONT, boxSizing: "border-box" }} />
           ) : (
             <div style={{ fontSize: 14, fontWeight: 600, wordBreak: "break-word", minHeight: 20 }}>{value || "—"}</div>
@@ -693,7 +690,7 @@ export default function SecretaryOS() {
             {label} <span style={{ fontSize: 10, color: "#D6D3D1" }}>✏️</span>
           </div>
           {isEditingDate ? (
-            <input autoFocus type="date" value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => handleKeyDown(e, fieldKey)} onBlur={e => { if (!composingRef.current) doSave(fieldKey, e.target.value); }}
+            <input autoFocus type="date" value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => handleKeyDown(e, fieldKey)} onBlur={e => doSave(fieldKey, e.target.value)}
               style={{ width: "100%", fontSize: 14, fontWeight: 700, border: "none", outline: "none", background: "transparent", fontFamily: FONT, color: u.color, boxSizing: "border-box" }} />
           ) : (
             <div onClick={() => startEdit(fieldKey, dateStr)} style={{ fontSize: 14, fontWeight: 700, color: u.color, cursor: "pointer" }}>
@@ -703,11 +700,9 @@ export default function SecretaryOS() {
           {personKey && (
             isEditingPerson ? (
               <input autoFocus value={editVal}
-                onChange={e => { if (!composingRef.current) setEditVal(e.target.value); }}
-                onCompositionStart={() => { composingRef.current = true; }}
-                onCompositionEnd={e => { composingRef.current = false; setEditVal((e.target as HTMLInputElement).value); }}
+                onChange={e => setEditVal(e.target.value)}
                 onKeyDown={e => handleKeyDown(e, personKey)}
-                onBlur={e => { if (!composingRef.current) doSave(personKey!, e.target.value); }}
+                onBlur={e => doSave(personKey!, e.target.value)}
                 style={{ width: "100%", fontSize: 12, border: "none", outline: "none", background: "#fff", borderRadius: 4, padding: "2px 6px", marginTop: 4, fontFamily: FONT, boxSizing: "border-box" }} />
             ) : (
               <div onClick={() => startEdit(personKey, person)} style={{ fontSize: 12, color: "#78716C", marginTop: 2, cursor: "pointer" }}>{person || "点击添加"}</div>
@@ -894,7 +889,7 @@ export default function SecretaryOS() {
         {view !== "detail" && view !== "logs" && (
           <div style={{ position: "relative", marginBottom: 14 }}>
             <span style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", color: "#A8A29E" }}>🔍</span>
-            <input value={search} onChange={e => { if (!composingRef.current) setSearch(e.target.value); }} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={e => { composingRef.current = false; setSearch((e.target as HTMLInputElement).value); }} placeholder="搜索公司名、UEN、客户名、护照号..."
+            <input value={search} onChange={e => setSearch(e.target.value)} placeholder="搜索公司名、UEN、客户名、护照号..."
               style={{ width: "100%", padding: "11px 36px 11px 40px", borderRadius: 12, border: `2px solid ${colors.border}`, fontSize: 14, outline: "none", background: "#fff", boxSizing: "border-box" }}
               onFocus={e => (e.target.style.borderColor = "#0C0A09")}
               onBlur={e => (e.target.style.borderColor = colors.border)} />
@@ -968,13 +963,13 @@ export default function SecretaryOS() {
             <p style={{ fontSize: 13, color: colors.muted, marginBottom: 20 }}>输入公司名称和 UEN 创建记录，其他信息之后在详情页填写</p>
             <div style={{ marginBottom: 14 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: colors.muted, display: "block", marginBottom: 4 }}>公司名称 *</label>
-              <input value={newCompany} onChange={e => { if (!composingRef.current) setNewCompany(e.target.value); }} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={e => { composingRef.current = false; setNewCompany((e.target as HTMLInputElement).value); }} onKeyDown={e => e.key === "Enter" && !e.nativeEvent.isComposing && handleAddCompany()} placeholder="例: RICH INTERNATIONAL BUSINESS CONSULTING PTE. LTD." autoFocus
+              <input value={newCompany} onChange={e => setNewCompany(e.target.value)} onKeyDown={e => e.key === "Enter" && !e.nativeEvent.isComposing && handleAddCompany()} placeholder="例: RICH INTERNATIONAL BUSINESS CONSULTING PTE. LTD." autoFocus
                 style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `2px solid ${colors.border}`, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: FONT }}
                 onFocus={e => (e.target.style.borderColor = "#0C0A09")} onBlur={e => (e.target.style.borderColor = colors.border)} />
             </div>
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 12, fontWeight: 600, color: colors.muted, display: "block", marginBottom: 4 }}>UEN（选填）</label>
-              <input value={newUen} onChange={e => { if (!composingRef.current) setNewUen(e.target.value); }} onCompositionStart={() => { composingRef.current = true; }} onCompositionEnd={e => { composingRef.current = false; setNewUen((e.target as HTMLInputElement).value); }} onKeyDown={e => e.key === "Enter" && !e.nativeEvent.isComposing && handleAddCompany()} placeholder="例: 202609584R"
+              <input value={newUen} onChange={e => setNewUen(e.target.value)} onKeyDown={e => e.key === "Enter" && !e.nativeEvent.isComposing && handleAddCompany()} placeholder="例: 202609584R"
                 style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `2px solid ${colors.border}`, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: FONT }}
                 onFocus={e => (e.target.style.borderColor = "#0C0A09")} onBlur={e => (e.target.style.borderColor = colors.border)} />
             </div>
