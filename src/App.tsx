@@ -671,7 +671,7 @@ export default function SecretaryOS() {
               onCompositionStart={() => { composingRef.current = true; }}
               onCompositionEnd={e => { composingRef.current = false; setEditVal((e.target as HTMLInputElement).value); }}
               onKeyDown={e => handleKeyDown(e, fieldKey)}
-              onBlur={e => doSave(fieldKey, e.target.value)}
+              onBlur={e => { if (!composingRef.current) doSave(fieldKey, e.target.value); }}
               style={{ width: "100%", fontSize: 14, fontWeight: 600, padding: "4px 8px", border: "none", borderRadius: 6, outline: "none", background: "#fff", fontFamily: FONT, boxSizing: "border-box" }} />
           ) : (
             <div style={{ fontSize: 14, fontWeight: 600, wordBreak: "break-word", minHeight: 20 }}>{value || "—"}</div>
@@ -693,7 +693,7 @@ export default function SecretaryOS() {
             {label} <span style={{ fontSize: 10, color: "#D6D3D1" }}>✏️</span>
           </div>
           {isEditingDate ? (
-            <input autoFocus type="date" value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => handleKeyDown(e, fieldKey)} onBlur={e => doSave(fieldKey, e.target.value)}
+            <input autoFocus type="date" value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => handleKeyDown(e, fieldKey)} onBlur={e => { if (!composingRef.current) doSave(fieldKey, e.target.value); }}
               style={{ width: "100%", fontSize: 14, fontWeight: 700, border: "none", outline: "none", background: "transparent", fontFamily: FONT, color: u.color, boxSizing: "border-box" }} />
           ) : (
             <div onClick={() => startEdit(fieldKey, dateStr)} style={{ fontSize: 14, fontWeight: 700, color: u.color, cursor: "pointer" }}>
@@ -707,7 +707,7 @@ export default function SecretaryOS() {
                 onCompositionStart={() => { composingRef.current = true; }}
                 onCompositionEnd={e => { composingRef.current = false; setEditVal((e.target as HTMLInputElement).value); }}
                 onKeyDown={e => handleKeyDown(e, personKey)}
-                onBlur={e => doSave(personKey, e.target.value)}
+                onBlur={e => { if (!composingRef.current) doSave(personKey!, e.target.value); }}
                 style={{ width: "100%", fontSize: 12, border: "none", outline: "none", background: "#fff", borderRadius: 4, padding: "2px 6px", marginTop: 4, fontFamily: FONT, boxSizing: "border-box" }} />
             ) : (
               <div onClick={() => startEdit(personKey, person)} style={{ fontSize: 12, color: "#78716C", marginTop: 2, cursor: "pointer" }}>{person || "点击添加"}</div>
@@ -777,36 +777,36 @@ export default function SecretaryOS() {
           <div style={{ background: "#FFFBEB", borderRadius: 10, padding: "10px 16px", marginBottom: 20, fontSize: 13, color: "#92400E" }}>
             💡 点击任意字段即可编辑，修改后自动保存
           </div>
-          <Section title="公司信息">
+          {Section({ title: "公司信息", children: (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8 }}>
-              <Field label="公司类型" fieldKey="type" />
-              <Field label="状态" fieldKey="status" fill={r.status && r.status.includes("LIVE") ? "#F0FDF4" : ""} />
-              <Field label="注册日期" fieldKey="regDate" />
-              <Field label="FYE" fieldKey="fye" />
-              <Field label="注册地址" fieldKey="address" />
-              <Field label="银行账户" fieldKey="bank" />
+              {Field({ label: "公司类型", fieldKey: "type" })}
+              {Field({ label: "状态", fieldKey: "status", fill: r.status && r.status.includes("LIVE") ? "#F0FDF4" : "" })}
+              {Field({ label: "注册日期", fieldKey: "regDate" })}
+              {Field({ label: "FYE", fieldKey: "fye" })}
+              {Field({ label: "注册地址", fieldKey: "address" })}
+              {Field({ label: "银行账户", fieldKey: "bank" })}
             </div>
-          </Section>
-          <Section title="客户 / EP 信息">
+          )})}
+          {Section({ title: "客户 / EP 信息", children: (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8 }}>
-              <Field label="客户姓名" fieldKey="clientName" />
-              <Field label="手机号" fieldKey="phone" />
-              <Field label="护照号" fieldKey="passportNo" />
-              <Field label="EP证件号" fieldKey="epNo" />
-              <ExpiryField label="EP到期日" fieldKey="epExpiry" />
-              <Field label="运营费/月" fieldKey="opsFee" />
+              {Field({ label: "客户姓名", fieldKey: "clientName" })}
+              {Field({ label: "手机号", fieldKey: "phone" })}
+              {Field({ label: "护照号", fieldKey: "passportNo" })}
+              {Field({ label: "EP证件号", fieldKey: "epNo" })}
+              {ExpiryField({ label: "EP到期日", fieldKey: "epExpiry" })}
+              {Field({ label: "运营费/月", fieldKey: "opsFee" })}
             </div>
-          </Section>
-          <Section title="到期提醒">
+          )})}
+          {Section({ title: "到期提醒", children: (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
-              <ExpiryField label="挂名董事到期" fieldKey="ndExpiry" personKey="ndName" />
-              <ExpiryField label="秘书到期" fieldKey="secExpiry" personKey="secName" />
-              <ExpiryField label="地址到期" fieldKey="addrExpiry" />
+              {ExpiryField({ label: "挂名董事到期", fieldKey: "ndExpiry", personKey: "ndName" })}
+              {ExpiryField({ label: "秘书到期", fieldKey: "secExpiry", personKey: "secName" })}
+              {ExpiryField({ label: "地址到期", fieldKey: "addrExpiry" })}
             </div>
-          </Section>
-          <Section title="报税 / 合规">
+          )})}
+          {Section({ title: "报税 / 合规", children: (<>
             <div style={{ marginBottom: 12 }}>
-              <Field label="工作备注" fieldKey="work" fill={r.work && /(做报表|发invoice)/i.test(r.work) ? "#FEF2F2" : ""} />
+              {Field({ label: "工作备注", fieldKey: "work", fill: r.work && /(做报表|发invoice)/i.test(r.work) ? "#FEF2F2" : "" })}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               {[
@@ -837,7 +837,7 @@ export default function SecretaryOS() {
                 onFocus={e => (e.target.style.borderColor = "#0C0A09")}
                 onBlur={e => (e.target.style.borderColor = "#D6D3D1")} />
             </div>
-          </Section>
+          </>)})}
           <div style={{ borderTop: "1px solid #E7E5E4", paddingTop: 20, marginTop: 10 }}>
             {!confirmDelete ? (
               <button onClick={() => setConfirmDelete(true)} style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid #FECACA", background: "#fff", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#DC2626" }}>🗑️ 删除此公司</button>
