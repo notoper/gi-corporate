@@ -79,6 +79,20 @@ const mapRow = (row: Record<string, string>) => {
     source: g(["数据来源", "来源"]),
     customTodos: "",
     previousNames: "",
+    managed: "",
+    managedStart: "",
+    managedExpiry: "",
+    passportExpiry: "",
+    epStart: "",
+    ndStart: "",
+    secStart: "",
+    addrStart: "",
+    directorsJson: "[]",
+    shareholdersJson: "[]",
+    registeredCapital: "",
+    paidCapital: "",
+    rorc: "",
+    personnelChangeLogs: "[]",
   };
 };
 
@@ -120,6 +134,20 @@ const dbToRow = (db: any): CompanyRow => ({
   source: db.source || "",
   customTodos: db.custom_todos || "",
   previousNames: db.previous_names || "",
+  managed: db.managed || "",
+  managedStart: db.managed_start || "",
+  managedExpiry: db.managed_expiry || "",
+  passportExpiry: db.passport_expiry || "",
+  epStart: db.ep_start || "",
+  ndStart: db.nd_start || "",
+  secStart: db.sec_start || "",
+  addrStart: db.addr_start || "",
+  directorsJson: db.directors_json || "[]",
+  shareholdersJson: db.shareholders_json || "[]",
+  registeredCapital: db.registered_capital || "",
+  paidCapital: db.paid_capital || "",
+  rorc: db.rorc || "",
+  personnelChangeLogs: db.personnel_change_logs || "[]",
 });
 
 const rowToDb = (row: CompanyRow) => ({
@@ -156,6 +184,20 @@ const rowToDb = (row: CompanyRow) => ({
   source: row.source || "",
   custom_todos: row.customTodos || "",
   previous_names: row.previousNames || "",
+  managed: row.managed || "",
+  managed_start: row.managedStart || "",
+  managed_expiry: row.managedExpiry || "",
+  passport_expiry: row.passportExpiry || "",
+  ep_start: row.epStart || "",
+  nd_start: row.ndStart || "",
+  sec_start: row.secStart || "",
+  addr_start: row.addrStart || "",
+  directors_json: row.directorsJson || "[]",
+  shareholders_json: row.shareholdersJson || "[]",
+  registered_capital: row.registeredCapital || "",
+  paid_capital: row.paidCapital || "",
+  rorc: row.rorc || "",
+  personnel_change_logs: row.personnelChangeLogs || "[]",
 });
 
 type LogEntry = { id: number; time: string; action: string; company: string; field: string; oldVal: string; newVal: string };
@@ -169,6 +211,87 @@ const dbToLog = (db: any): LogEntry => ({
   oldVal: db.old_val || "",
   newVal: db.new_val || "",
 });
+
+// ─── Date helpers ───
+const MONTHS_SHORT = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+const formatDateDisplay = (ds: string): string => {
+  if (!ds) return "";
+  let d: Date;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(ds)) {
+    const [y, m, day] = ds.split("-").map(Number);
+    d = new Date(y, m - 1, day);
+  } else {
+    d = new Date(ds);
+  }
+  if (isNaN(d.getTime())) return ds;
+  return `${String(d.getDate()).padStart(2, "0")} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
+};
+
+// ─── BizFile PDF Parser ───
+interface BizFileShareholder { name: string; shares: number; currency: string; shareType: string; }
+interface BizFileData {
+  company: string; uen: string; regDate: string;
+  status: string; address: string; directors: string[];
+  secretary: string;
+  shareholders: BizFileShareholder[];
+  paidUpCapital: string;
+  issuedCapital: string;
+}
+
+async function parseBizFilePdf(file: File): Promise<BizFileData> {
+  const buffer = await file.arrayBuffer();
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 8192) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + 8192, bytes.length)));
+  }
+  const base64 = btoa(binary);
+
+  const apiKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
+  if (!apiKey || apiKey.startsWith("请填入")) throw new Error("请先在 .env 文件中设置 VITE_ANTHROPIC_API_KEY");
+
+  const resp = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 1024,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } },
+          { type: "text", text: `从这份 ACRA BizFile PDF 中提取信息，只返回 JSON，不要任何 markdown 或说明：
+{
+  "company": "公司完整名称",
+  "uen": "UEN号码",
+  "regDate": "注册日期，格式 YYYY-MM-DD",
+  "status": "公司状态",
+  "address": "注册地址",
+  "directors": ["董事姓名列表"],
+  "secretary": "秘书姓名，没有则空字符串",
+  "shareholders": [{"name":"股东名称","shares":股份数量,"currency":"货币如SINGAPORE DOLLAR","shareType":"股份类型如ORDINARY"}],
+  "paidUpCapital": "实缴资本，如 SGD 1",
+  "issuedCapital": "已发行资本，如 SGD 100"
+}` }
+        ]
+      }]
+    })
+  });
+
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error(`API 错误 ${resp.status}: ${err.slice(0, 200)}`);
+  }
+
+  const json = await resp.json();
+  const text = (json.content[0].text as string).trim().replace(/^```json\n?/, "").replace(/\n?```$/, "");
+  return JSON.parse(text) as BizFileData;
+}
 
 // ─── Styles ───
 const FONT = "'Geist', 'Noto Sans SC', system-ui, sans-serif";
@@ -192,10 +315,13 @@ export default function SecretaryOS() {
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
   const [tab, setTab] = useState("all");
+  const [expandedExpiryTypes, setExpandedExpiryTypes] = useState<Set<string>>(new Set());
   const importRef = useRef<HTMLTextAreaElement>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
   const [detailSaved, setDetailSaved] = useState(false);
+  const [personnelRescanning, setPersonnelRescanning] = useState(false);
+  const [personnelRescanError, setPersonnelRescanError] = useState("");
 
   const FIELD_LABELS: Record<string, string> = {
     company: "公司名称", uen: "UEN", type: "公司类型", status: "状态",
@@ -305,30 +431,110 @@ export default function SecretaryOS() {
   const [showNewForm, setShowNewForm] = useState(false);
   const [newCompany, setNewCompany] = useState("");
   const [newUen, setNewUen] = useState("");
+  const [bizFileMode, setBizFileMode] = useState(false);
+  const [bizFileExtracting, setBizFileExtracting] = useState(false);
+  const [extractedBizData, setExtractedBizData] = useState<BizFileData | null>(null);
+  const [bizFileError, setBizFileError] = useState("");
+  // Step 2 state (client info)
+  const [newFormStep, setNewFormStep] = useState<1 | 2>(1);
+  const [newClientName, setNewClientName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newPassportNo, setNewPassportNo] = useState("");
+  const [newEpNo, setNewEpNo] = useState("");
+  // Director role assignment (for BizFile mode)
+  const [directorRoles, setDirectorRoles] = useState<{ name: string; tag: "nominal" | "client" | null }[]>([]);
 
-  const handleAddCompany = useCallback(async () => {
-    if (!newCompany.trim()) return;
+  // Step 1 → 2: advance to client info step
+  const goToStep2 = useCallback(() => {
+    if (bizFileMode) {
+      const clientDir = directorRoles.find(d => d.tag === "client");
+      if (clientDir && !newClientName.trim()) setNewClientName(clientDir.name);
+    }
+    setNewFormStep(2);
+  }, [bizFileMode, directorRoles, newClientName]);
+
+  // Final create (called from step 2, or skip)
+  const handleFinalCreate = useCallback(async (skipClient = false) => {
     const newId = String(Date.now());
+    let company = "", uen = "", type = "", status = "LIVE COMPANY", regDate = "", address = "", secName = "", ndName = "";
+    if (bizFileMode && extractedBizData) {
+      company = extractedBizData.company;
+      uen = extractedBizData.uen || "";
+      regDate = extractedBizData.regDate || "";
+      address = extractedBizData.address || "";
+      secName = extractedBizData.secretary || "";
+      ndName = directorRoles.find(d => d.tag === "nominal")?.name || "";
+    } else {
+      company = newCompany.trim();
+      uen = newUen.trim();
+    }
+    if (!company) return;
+    // Build directors JSON from BizFile roles
+    let directorsJson = "[]";
+    let shareholdersJson = "[]";
+    let registeredCapital = "";
+    if (bizFileMode && extractedBizData) {
+      const dirs = directorRoles.map(d => ({ name: d.name, role: d.tag || "director" }));
+      if (extractedBizData.secretary) dirs.push({ name: extractedBizData.secretary, role: "secretary" });
+      directorsJson = JSON.stringify(dirs);
+      shareholdersJson = JSON.stringify(extractedBizData.shareholders || []);
+      registeredCapital = extractedBizData.issuedCapital || extractedBizData.paidUpCapital || "";
+    }
     const record: CompanyRow = {
-      _id: newId, company: newCompany.trim(), uen: newUen.trim(),
-      type: "", status: "", regDate: "", fye: "", address: "",
-      clientName: "", phone: "", passportNo: "",
-      epNo: "", epExpiry: "", epStatus: "",
-      ndName: "", ndExpiry: "", ndStatus: "",
-      secName: "", secExpiry: "", secStatus: "",
+      _id: newId, company, uen, type, status, regDate, fye: "", address,
+      clientName: skipClient ? "" : newClientName.trim(),
+      phone: skipClient ? "" : newPhone.trim(),
+      passportNo: skipClient ? "" : newPassportNo.trim(),
+      epNo: skipClient ? "" : newEpNo.trim(),
+      epExpiry: "", epStatus: "", passportExpiry: "",
+      ndName, ndExpiry: "", ndStatus: "",
+      secName, secExpiry: "", secStatus: "",
       addrExpiry: "", addrStatus: "",
       work: "", ar2024: "", ar2025: "", ya2025: "", ya2026: "", ltr: "",
-      opsFee: "", bank: "", source: "手动新增", customTodos: "", previousNames: "",
+      opsFee: "", bank: "", source: bizFileMode ? "BizFile导入" : "手动新增",
+      customTodos: "", previousNames: "",
+      managed: "", managedExpiry: "", managedStart: "",
+      epStart: "", ndStart: "", secStart: "", addrStart: "",
+      paidCapital: "", rorc: "", personnelChangeLogs: "[]",
+      directorsJson, shareholdersJson, registeredCapital,
     };
     setData(prev => [...prev, record]);
-    addLog("新增公司", newCompany.trim(), "", "", newUen.trim() ? `UEN: ${newUen.trim()}` : "");
-    setNewCompany("");
-    setNewUen("");
-    setShowNewForm(false);
+    addLog("新增公司", company, "", "", bizFileMode ? `BizFile导入，UEN: ${uen}` : (uen ? `UEN: ${uen}` : ""));
+    closeNewForm();
     setSelected(record);
     setView("detail");
     try { await supabase.from("companies").insert(rowToDb(record)); } catch (e) { console.error("Add company failed:", e); }
-  }, [newCompany, newUen, addLog]);
+  }, [bizFileMode, extractedBizData, directorRoles, newCompany, newUen, newClientName, newPhone, newPassportNo, newEpNo, addLog]);
+
+  // Manual step 1: just validate and advance
+  const handleAddCompany = useCallback(() => {
+    if (!newCompany.trim()) return;
+    goToStep2();
+  }, [newCompany, goToStep2]);
+
+  const handleBizFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== "application/pdf") { setBizFileError("请上传 PDF 格式的 BizFile"); return; }
+    setBizFileExtracting(true);
+    setBizFileError("");
+    try {
+      const data = await parseBizFilePdf(file);
+      setExtractedBizData(data);
+      setDirectorRoles((data.directors || []).map(name => ({ name, tag: null })));
+    } catch (err) {
+      setBizFileError(err instanceof Error ? err.message : "解析失败，请重试");
+    }
+    setBizFileExtracting(false);
+    e.target.value = "";
+  }, []);
+
+  const closeNewForm = useCallback(() => {
+    setShowNewForm(false); setNewCompany(""); setNewUen("");
+    setBizFileMode(false); setExtractedBizData(null); setBizFileError(""); setBizFileExtracting(false);
+    setNewFormStep(1); setNewClientName(""); setNewPhone(""); setNewPassportNo(""); setNewEpNo("");
+    setDirectorRoles([]);
+  }, []);
 
   // ─── Computed ───
   const mapped = useMemo(() => data, [data]);
@@ -348,20 +554,29 @@ export default function SecretaryOS() {
   const alerts = useMemo(() => {
     const list: Array<{ type: string; date: string; person: string; detail: string; company: string; days: number; uen: string }> = [];
     mapped.forEach(r => {
+      if (r.status === "STRIKE OFF") return; // Strike Off 公司不提醒
       const items = [
         { type: "EP到期", date: r.epExpiry, person: r.clientName, detail: r.epNo },
+        { type: "护照到期", date: r.passportExpiry, person: r.clientName, detail: r.passportNo },
         { type: "挂名到期", date: r.ndExpiry, person: r.ndName, detail: "需续费" },
         { type: "秘书到期", date: r.secExpiry, person: r.secName, detail: "需续费" },
         { type: "地址到期", date: r.addrExpiry, person: "", detail: "需续费" },
+        { type: "代运营到期", date: r.managedExpiry, person: "", detail: "需续费" },
       ];
       items.forEach(item => {
         const days = daysBetween(item.date);
-        if (days !== null && days <= 180) {
+        const threshold = item.type === "护照到期" ? 180 : 120;
+        if (days !== null && (days <= 0 || days <= threshold)) {
           list.push({ ...item, company: r.company, days, uen: r.uen });
         }
       });
     });
-    list.sort((a, b) => a.days - b.days);
+    // 未过期按剩余天数升序，已过期排在后面按过期程度升序
+    list.sort((a, b) => {
+      const aExpired = a.days <= 0, bExpired = b.days <= 0;
+      if (aExpired !== bExpired) return aExpired ? 1 : -1;
+      return a.days - b.days;
+    });
     return list;
   }, [mapped]);
 
@@ -429,19 +644,6 @@ export default function SecretaryOS() {
           Ctrl+C 复制 → 粘贴到导入框中
         </p>
       </div>
-      {showNewForm && (
-        <div onClick={() => setShowNewForm(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 20, maxWidth: 480, width: "100%", padding: 28 }}>
-            <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 20 }}>➕ 新增公司</h2>
-            <input value={newCompany} onChange={e => setNewCompany(e.target.value)} onKeyDown={e => e.key === "Enter" && !e.nativeEvent.isComposing && handleAddCompany()} placeholder="公司名称 *" autoFocus style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `2px solid ${colors.border}`, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: FONT, marginBottom: 12 }} />
-            <input value={newUen} onChange={e => setNewUen(e.target.value)} onKeyDown={e => e.key === "Enter" && !e.nativeEvent.isComposing && handleAddCompany()} placeholder="UEN（选填）" style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `2px solid ${colors.border}`, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: FONT, marginBottom: 20 }} />
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button onClick={() => setShowNewForm(false)} style={{ padding: "10px 20px", borderRadius: 10, border: `1px solid ${colors.border}`, background: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>取消</button>
-              <button onClick={handleAddCompany} disabled={!newCompany.trim()} style={{ padding: "10px 24px", borderRadius: 10, border: "none", cursor: newCompany.trim() ? "pointer" : "not-allowed", background: newCompany.trim() ? "#16A34A" : "#D6D3D1", color: "#fff", fontWeight: 700, fontSize: 14 }}>创建并填写详情</button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 
@@ -466,14 +668,14 @@ export default function SecretaryOS() {
 
   const Dashboard = () => {
     const alertsByType = useMemo(() => {
-      const groups: Record<string, typeof alerts> = { "EP到期": [], "挂名到期": [], "秘书到期": [], "地址到期": [] };
+      const groups: Record<string, typeof alerts> = { "EP到期": [], "护照到期": [], "挂名到期": [], "秘书到期": [], "地址到期": [], "代运营到期": [] };
       alerts.forEach(a => { if (groups[a.type]) groups[a.type].push(a); });
       return groups;
     }, []);
 
     const expired = alerts.filter(a => a.days <= 0).length;
     const within90 = alerts.filter(a => a.days > 0 && a.days <= 90).length;
-    const within180 = alerts.filter(a => a.days > 90 && a.days <= 180).length;
+    const within120 = alerts.filter(a => a.days > 90 && a.days <= 120).length;
     const goList = (filterTab: string) => { setTab(filterTab); setView("list"); };
 
     return (
@@ -499,7 +701,7 @@ export default function SecretaryOS() {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
             <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>📊 到期概览</h3>
             <div style={{ display: "flex", gap: 16, flexWrap: "wrap" }}>
-              {[["#DC2626", "已过期", expired], ["#D97706", "90天内", within90], ["#FBBF24", "180天内", within180]].map(([color, label, count]) => (
+              {[["#DC2626", "已过期", expired], ["#D97706", "90天内", within90], ["#FBBF24", "120天内", within120]].map(([color, label, count]) => (
                 <div key={label as string} style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <div style={{ width: 10, height: 10, borderRadius: "50%", background: color as string }} />
                   <span style={{ fontSize: 13 }}>{label} <strong style={{ color: color as string }}>{count}</strong></span>
@@ -509,16 +711,26 @@ export default function SecretaryOS() {
           </div>
         </Card>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 12, marginBottom: 20 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 20 }}>
           {[
-            { type: "EP到期", icon: "🛂", color: colors.purple, bg: "#F3E8FF" },
-            { type: "挂名到期", icon: "👤", color: colors.blue, bg: "#DBEAFE" },
-            { type: "秘书到期", icon: "📋", color: colors.orange, bg: "#FEF3C7" },
-            { type: "地址到期", icon: "📍", color: "#059669", bg: "#D1FAE5" },
+            { type: "EP到期",    icon: "🛂", color: colors.purple, bg: "#F3E8FF" },
+            { type: "护照到期",  icon: "🛂", color: "#0891B2",     bg: "#CFFAFE" },
+            { type: "挂名到期",  icon: "👤", color: colors.blue,   bg: "#DBEAFE" },
+            { type: "秘书到期",  icon: "📋", color: colors.orange,  bg: "#FEF3C7" },
+            { type: "地址到期",  icon: "📍", color: "#059669",     bg: "#D1FAE5" },
+            { type: "代运营到期",icon: "⚙️", color: "#7C3AED",     bg: "#EDE9FE" },
           ].map(cat => {
             const items = alertsByType[cat.type] || [];
             const expiredCount = items.filter(a => a.days <= 0).length;
             const urgentCount = items.filter(a => a.days > 0 && a.days <= 90).length;
+
+            const isExpanded = expandedExpiryTypes.has(cat.type);
+            const displayItems = isExpanded ? items : items.slice(0, 4);
+            const toggleExpand = () => setExpandedExpiryTypes(prev => {
+              const next = new Set(prev);
+              next.has(cat.type) ? next.delete(cat.type) : next.add(cat.type);
+              return next;
+            });
             return (
               <Card key={cat.type} style={{ padding: 0, overflow: "hidden" }}>
                 <div style={{ padding: "14px 18px", background: cat.bg, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
@@ -535,7 +747,7 @@ export default function SecretaryOS() {
                 <div style={{ padding: "8px 12px" }}>
                   {items.length === 0 ? (
                     <div style={{ padding: "12px 6px", color: "#A8A29E", fontSize: 13, textAlign: "center" }}>暂无预警</div>
-                  ) : items.slice(0, 4).map((a, i) => {
+                  ) : displayItems.map((a, i) => {
                     const u = urgency(a.days);
                     return (
                       <div key={i} onClick={() => openCompany(mapped.find(m => m.company === a.company)!)}
@@ -548,31 +760,124 @@ export default function SecretaryOS() {
                       </div>
                     );
                   })}
-                  {items.length > 4 && <div style={{ textAlign: "center", padding: "6px 0", fontSize: 12, color: colors.muted }}>还有 {items.length - 4} 项...</div>}
+                  {items.length > 4 && (
+                    <div onClick={toggleExpand} style={{ textAlign: "center", padding: "6px 0", fontSize: 12, color: cat.color, fontWeight: 600, cursor: "pointer" }}>
+                      {isExpanded ? "▲ 收起" : `▼ 还有 ${items.length - 4} 项，点击展开`}
+                    </div>
+                  )}
                 </div>
               </Card>
             );
           })}
         </div>
 
-        <Card>
-          <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>📌 需要行动</h3>
-          {mapped.filter(r => r.work && /(做报表|发invoice|有流水)/i.test(r.work)).length === 0 ? (
-            <div style={{ padding: 16, color: "#A8A29E", fontSize: 13, textAlign: "center" }}>暂无待办</div>
-          ) : mapped.filter(r => r.work && /(做报表|发invoice|有流水)/i.test(r.work)).slice(0, 8).map(r => (
-            <div key={r._id} onClick={() => openCompany(r)}
-              style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 14px", borderRadius: 10, marginBottom: 4, background: "#FAFAF9", cursor: "pointer" }}
-              onMouseEnter={e => (e.currentTarget.style.background = "#F5F5F4")}
-              onMouseLeave={e => (e.currentTarget.style.background = "#FAFAF9")}>
-              <div style={{ width: 8, height: 8, borderRadius: "50%", background: colors.red, flexShrink: 0 }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ fontWeight: 600, fontSize: 14 }}>{r.company}</span>
-                {r.clientName && <span style={{ color: colors.muted, fontSize: 12 }}> · {r.clientName}</span>}
+        {/* ── 数据中心 ── */}
+        {(() => {
+          const total = mapped.length;
+          const managedList = mapped.filter(r => r.managed === "YES");
+          const ndList = mapped.filter(r => r.ndName);
+          const addrList = mapped.filter(r => r.addrExpiry);
+          const secList = mapped.filter(r => r.secExpiry);
+          const epList = mapped.filter(r => r.epExpiry);
+          const thisYear = new Date().getFullYear().toString();
+          const newThisYear = mapped.filter(r => r.regDate?.startsWith(thisYear)).length;
+          const newThisMonth = mapped.filter(r => {
+            if (!r.regDate) return false;
+            const d = new Date(r.regDate);
+            const now = new Date();
+            return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+          }).length;
+          const monthlyRevenue = managedList.reduce((sum, r) => {
+            const n = parseFloat((r.opsFee || "").replace(/[^0-9.]/g, ""));
+            return sum + (isNaN(n) ? 0 : n);
+          }, 0);
+          const totalOverdue = alerts.filter(a => a.days <= 0).length;
+          const totalUrgent = alerts.filter(a => a.days > 0 && a.days <= 90).length;
+
+          const pct = (n: number) => total > 0 ? Math.round(n / total * 100) : 0;
+
+          const ServiceCard = ({ icon, label, count, color, bg }: { icon: string; label: string; count: number; color: string; bg: string }) => (
+            <div style={{ background: bg, borderRadius: 12, padding: "16px 18px", flex: 1 }}>
+              <div style={{ fontSize: 20, marginBottom: 8 }}>{icon}</div>
+              <div style={{ fontSize: 26, fontWeight: 800, color, marginBottom: 2 }}>{count}</div>
+              <div style={{ fontSize: 14, fontWeight: 700, color, marginBottom: 6 }}>{label}</div>
+              <div style={{ height: 5, borderRadius: 3, background: "rgba(0,0,0,0.08)" }}>
+                <div style={{ height: 5, borderRadius: 3, background: color, width: `${pct(count)}%`, transition: "width .4s" }} />
               </div>
-              <span style={{ fontSize: 12, fontWeight: 600, color: colors.muted, maxWidth: 180, textAlign: "right", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.work}</span>
+              <div style={{ fontSize: 12, color, opacity: 0.6, marginTop: 4 }}>{pct(count)}% 客户</div>
             </div>
-          ))}
-        </Card>
+          );
+
+          return (
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 14 }}>📊 数据中心</div>
+
+              {/* 服务分布 */}
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#A8A29E", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>服务分布</div>
+              <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
+                {ServiceCard({ icon: "⚙️", label: "代运营", count: managedList.length, color: "#7C3AED", bg: "#F5F3FF" })}
+                {ServiceCard({ icon: "👤", label: "挂名董事", count: ndList.length, color: "#2563EB", bg: "#EFF6FF" })}
+                {ServiceCard({ icon: "🛂", label: "EP 客户", count: epList.length, color: "#0891B2", bg: "#ECFEFF" })}
+                {ServiceCard({ icon: "📍", label: "注册地址", count: addrList.length, color: "#059669", bg: "#F0FDF4" })}
+                {ServiceCard({ icon: "📋", label: "秘书服务", count: secList.length, color: "#D97706", bg: "#FFFBEB" })}
+              </div>
+
+              {/* 财务 + 增长 + 健康度 */}
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#A8A29E", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>财务 · 增长 · 健康度</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 10 }}>
+                {/* 月收入 */}
+                <div style={{ background: "#F5F3FF", borderRadius: 12, padding: "18px 20px" }}>
+                  <div style={{ fontSize: 13, color: "#7C3AED", fontWeight: 700, marginBottom: 10 }}>💰 代运营月收入估算</div>
+                  <div style={{ fontSize: 30, fontWeight: 800, color: "#7C3AED", marginBottom: 6 }}>
+                    SGD {monthlyRevenue.toLocaleString()}
+                  </div>
+                  <div style={{ fontSize: 13, color: "#A8A29E" }}>
+                    来自 {managedList.filter(r => r.opsFee).length} 家已填写运营费的客户
+                  </div>
+                  {managedList.filter(r => !r.opsFee).length > 0 && (
+                    <div style={{ fontSize: 13, color: "#D97706", marginTop: 6 }}>
+                      ⚠️ {managedList.filter(r => !r.opsFee).length} 家代运营客户未填运营费
+                    </div>
+                  )}
+                </div>
+
+                {/* 新增 */}
+                <div style={{ background: "#F0FDF4", borderRadius: 12, padding: "18px 20px" }}>
+                  <div style={{ fontSize: 13, color: "#059669", fontWeight: 700, marginBottom: 10 }}>🌱 客户增长</div>
+                  <div style={{ display: "flex", alignItems: "flex-end", gap: 20, marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 30, fontWeight: 800, color: "#059669" }}>{newThisYear}</div>
+                      <div style={{ fontSize: 13, color: "#A8A29E" }}>{thisYear} 年新增</div>
+                    </div>
+                    <div style={{ paddingBottom: 2 }}>
+                      <div style={{ fontSize: 22, fontWeight: 700, color: "#34D399" }}>{newThisMonth}</div>
+                      <div style={{ fontSize: 13, color: "#A8A29E" }}>本月新增</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, color: "#A8A29E" }}>共 {total} 家客户公司</div>
+                </div>
+
+                {/* 健康度 */}
+                <div style={{ background: totalOverdue > 0 ? "#FEF2F2" : "#F0FDF4", borderRadius: 12, padding: "18px 20px" }}>
+                  <div style={{ fontSize: 13, color: totalOverdue > 0 ? "#DC2626" : "#059669", fontWeight: 700, marginBottom: 10 }}>
+                    {totalOverdue > 0 ? "⚠️" : "✅"} 到期健康度
+                  </div>
+                  <div style={{ display: "flex", alignItems: "flex-end", gap: 20, marginBottom: 10 }}>
+                    <div>
+                      <div style={{ fontSize: 30, fontWeight: 800, color: "#DC2626" }}>{totalOverdue}</div>
+                      <div style={{ fontSize: 13, color: "#A8A29E" }}>已过期项</div>
+                    </div>
+                    <div style={{ paddingBottom: 2 }}>
+                      <div style={{ fontSize: 22, fontWeight: 700, color: "#D97706" }}>{totalUrgent}</div>
+                      <div style={{ fontSize: 13, color: "#A8A29E" }}>90天内到期</div>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 13, color: "#A8A29E" }}>覆盖 EP、护照、挂名、秘书、地址、代运营</div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   };
@@ -678,61 +983,87 @@ export default function SecretaryOS() {
       </div>
     );
 
-    const Field = ({ label, fieldKey, fill }: { label: string; fieldKey: string; fill?: string }) => {
+    const Field = ({ label, fieldKey, fill, isDate }: { label: string; fieldKey: string; fill?: string; isDate?: boolean }) => {
       const value = r[fieldKey as keyof CompanyRow] as string || "";
       const isEditingField = editing === fieldKey;
+      const displayValue = isDate ? formatDateDisplay(value) : value;
       return (
         <div onClick={() => !isEditingField && startEdit(fieldKey, value)}
           style={{ background: fill || "#FAFAF9", borderRadius: 10, padding: "10px 14px", cursor: isEditingField ? "default" : "pointer", border: isEditingField ? "2px solid #0C0A09" : "2px solid transparent", transition: "border .15s" }}
           title="点击编辑">
-          <div style={{ fontSize: 10, color: "#A8A29E", marginBottom: 3, display: "flex", justifyContent: "space-between" }}>
+          <div style={{ fontSize: 12, color: "#A8A29E", marginBottom: 3, display: "flex", justifyContent: "space-between" }}>
             {label}
-            {!isEditingField && <span style={{ fontSize: 10, color: "#D6D3D1" }}>✏️</span>}
+            {!isEditingField && <span style={{ fontSize: 11, color: "#D6D3D1" }}>✏️</span>}
           </div>
           {isEditingField ? (
-            <input autoFocus value={editVal}
+            <input autoFocus type={isDate ? "date" : "text"} value={editVal}
               onChange={e => setEditVal(e.target.value)}
               onKeyDown={e => handleKeyDown(e, fieldKey)}
               onBlur={e => doSave(fieldKey, e.target.value)}
               style={{ width: "100%", fontSize: 14, fontWeight: 600, padding: "4px 8px", border: "none", borderRadius: 6, outline: "none", background: "#fff", fontFamily: FONT, boxSizing: "border-box" }} />
           ) : (
-            <div style={{ fontSize: 14, fontWeight: 600, wordBreak: "break-word", minHeight: 20 }}>{value || "—"}</div>
+            <div style={{ fontSize: 14, fontWeight: 600, wordBreak: "break-word", minHeight: 20 }}>{displayValue || "—"}</div>
           )}
         </div>
       );
     };
 
-    const ExpiryField = ({ label, fieldKey, personKey }: { label: string; fieldKey: string; personKey?: string }) => {
+    const ExpiryField = ({ label, fieldKey, startFieldKey, topField }: {
+      label: string; fieldKey: string; startFieldKey?: string;
+      topField?: { label: string; fieldKey: string };
+    }) => {
       const dateStr = r[fieldKey as keyof CompanyRow] as string || "";
-      const person = personKey ? (r[personKey as keyof CompanyRow] as string || "") : "";
+      const startStr = startFieldKey ? (r[startFieldKey as keyof CompanyRow] as string || "") : "";
+      const topVal = topField ? (r[topField.fieldKey as keyof CompanyRow] as string || "") : "";
       const days = daysBetween(dateStr);
       const u = urgency(days);
       const isEditingDate = editing === fieldKey;
-      const isEditingPerson = editing === personKey;
+      const isEditingStart = editing === startFieldKey;
+      const rowStyle: React.CSSProperties = { display: "flex", alignItems: "center", gap: 6, minHeight: 24 };
+      const labelStyle: React.CSSProperties = { fontSize: 11, color: "#A8A29E", flexShrink: 0, width: 30 };
       return (
-        <div style={{ background: u.bg || "#FAFAF9", borderRadius: 10, padding: "10px 14px" }}>
-          <div style={{ fontSize: 10, color: "#A8A29E", marginBottom: 3, display: "flex", justifyContent: "space-between" }}>
-            {label} <span style={{ fontSize: 10, color: "#D6D3D1" }}>✏️</span>
+        <div onClick={() => !isEditingDate && !isEditingStart && startEdit(fieldKey, dateStr)}
+          style={{ background: u.bg || "#FAFAF9", borderRadius: 10, padding: "10px 14px", cursor: isEditingDate || isEditingStart ? "default" : "pointer" }}>
+          <div style={{ fontSize: 12, color: "#A8A29E", marginBottom: 6, fontWeight: 700, display: "flex", justifyContent: "space-between" }}>
+            {label}<span style={{ fontSize: 11, color: "#D6D3D1" }}>✏️</span>
           </div>
-          {isEditingDate ? (
-            <input autoFocus type="date" value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => handleKeyDown(e, fieldKey)} onBlur={e => doSave(fieldKey, e.target.value)}
-              style={{ width: "100%", fontSize: 14, fontWeight: 700, border: "none", outline: "none", background: "transparent", fontFamily: FONT, color: u.color, boxSizing: "border-box" }} />
-          ) : (
-            <div onClick={() => startEdit(fieldKey, dateStr)} style={{ fontSize: 14, fontWeight: 700, color: u.color, cursor: "pointer" }}>
-              {u.icon} {dateStr || "—"} {days !== null ? `(${u.label})` : ""}
-            </div>
-          )}
-          {personKey && (
-            isEditingPerson ? (
-              <input autoFocus value={editVal}
-                onChange={e => setEditVal(e.target.value)}
-                onKeyDown={e => handleKeyDown(e, personKey)}
-                onBlur={e => doSave(personKey!, e.target.value)}
-                style={{ width: "100%", fontSize: 12, border: "none", outline: "none", background: "#fff", borderRadius: 4, padding: "2px 6px", marginTop: 4, fontFamily: FONT, boxSizing: "border-box" }} />
+          {/* Row 1: either topField (read-only display) or 开始日期 */}
+          <div style={{ ...rowStyle, marginBottom: 4 }}>
+            {topField ? (
+              <>
+                <span style={labelStyle}>{topField.label}</span>
+                <div style={{ fontSize: 12, fontWeight: 600, color: "#44403C" }}>
+                  {topVal || <span style={{ color: "#D6D3D1" }}>—</span>}
+                </div>
+              </>
+            ) : startFieldKey ? (
+              <>
+                <span style={labelStyle}>开始</span>
+                {isEditingStart ? (
+                  <input autoFocus type="date" value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => handleKeyDown(e, startFieldKey)} onBlur={e => doSave(startFieldKey, e.target.value)}
+                    onClick={e => e.stopPropagation()}
+                    style={{ flex: 1, fontSize: 12, fontWeight: 600, border: "none", outline: "none", background: "transparent", fontFamily: FONT, color: "#44403C", boxSizing: "border-box" }} />
+                ) : (
+                  <div onClick={e => { e.stopPropagation(); startEdit(startFieldKey, startStr); }} style={{ fontSize: 12, fontWeight: 600, color: "#44403C", cursor: "pointer" }}>
+                    {startStr ? formatDateDisplay(startStr) : <span style={{ color: "#D6D3D1" }}>点击设置</span>}
+                  </div>
+                )}
+              </>
+            ) : null}
+          </div>
+          {/* Row 2: 到期日期 */}
+          <div style={rowStyle}>
+            {(startFieldKey || topField) && <span style={labelStyle}>到期</span>}
+            {isEditingDate ? (
+              <input autoFocus type="date" value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => handleKeyDown(e, fieldKey)} onBlur={e => doSave(fieldKey, e.target.value)}
+                onClick={e => e.stopPropagation()}
+                style={{ flex: 1, fontSize: 13, fontWeight: 700, border: "none", outline: "none", background: "transparent", fontFamily: FONT, color: u.color, boxSizing: "border-box" }} />
             ) : (
-              <div onClick={() => startEdit(personKey, person)} style={{ fontSize: 12, color: "#78716C", marginTop: 2, cursor: "pointer" }}>{person || "点击添加"}</div>
-            )
-          )}
+              <div onClick={e => { e.stopPropagation(); startEdit(fieldKey, dateStr); }} style={{ fontSize: 13, fontWeight: 700, color: u.color, cursor: "pointer" }}>
+                {u.icon} {dateStr ? formatDateDisplay(dateStr) : <span style={{ color: "#D6D3D1", fontWeight: 400 }}>点击设置</span>} {days !== null ? `(${u.label})` : ""}
+              </div>
+            )}
+          </div>
         </div>
       );
     };
@@ -755,11 +1086,25 @@ export default function SecretaryOS() {
       void (async () => { try { await supabase.from("companies").update(rowToDb(updated)).eq("id", String(updated._id)); } catch (e) { console.error("Update failed:", e); } })();
     };
 
-    let customTodos: Array<{ id: number; text: string; done: boolean }> = [];
-    try { customTodos = JSON.parse(r.customTodos || "[]"); } catch { customTodos = []; }
+    let allTodosRaw: Array<{ id: number | string; text?: string; done: boolean; isDefault?: boolean; hidden?: boolean }> = [];
+    try { allTodosRaw = JSON.parse(r.customTodos || "[]"); } catch { allTodosRaw = []; }
+    const hiddenDefaultKeys = new Set(allTodosRaw.filter(t => t.isDefault && t.hidden).map(t => String(t.id)));
+    const customTodos = allTodosRaw.filter(t => !t.isDefault) as Array<{ id: number; text: string; done: boolean }>;
 
     const saveCustomTodos = (updatedTodos: typeof customTodos) => {
-      const updatedRecord = { ...r, customTodos: JSON.stringify(updatedTodos) };
+      const hiddenDefaults = allTodosRaw.filter(t => t.isDefault && t.hidden);
+      const updatedRecord = { ...r, customTodos: JSON.stringify([...hiddenDefaults, ...updatedTodos]) };
+      setSelected(updatedRecord);
+      setData(prev => prev.map(item => item._id === updatedRecord._id ? updatedRecord : item));
+      setDetailSaved(true);
+      setTimeout(() => setDetailSaved(false), 1500);
+      void (async () => { try { await supabase.from("companies").update(rowToDb(updatedRecord)).eq("id", String(updatedRecord._id)); } catch (e) { console.error("Update failed:", e); } })();
+    };
+
+    const deleteDefaultTodo = (key: string) => {
+      const hiddenEntry = { id: key, done: false, isDefault: true, hidden: true };
+      const updatedRecord = { ...r, customTodos: JSON.stringify([...allTodosRaw.filter(t => !(t.isDefault && String(t.id) === key)), hiddenEntry]) };
+      addLog("删除待办", r.company, "", key, "");
       setSelected(updatedRecord);
       setData(prev => prev.map(item => item._id === updatedRecord._id ? updatedRecord : item));
       setDetailSaved(true);
@@ -839,34 +1184,328 @@ export default function SecretaryOS() {
           <div style={{ background: "#FFFBEB", borderRadius: 10, padding: "10px 16px", marginBottom: 20, fontSize: 13, color: "#92400E" }}>
             💡 点击任意字段即可编辑，修改后自动保存
           </div>
+          {/* ── 公司信息 ── */}
           {Section({ title: "公司信息", children: (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8 }}>
-              {Field({ label: "公司类型", fieldKey: "type" })}
-              {Field({ label: "状态", fieldKey: "status", fill: r.status && r.status.includes("LIVE") ? "#F0FDF4" : "" })}
-              {Field({ label: "注册日期", fieldKey: "regDate" })}
-              {Field({ label: "FYE", fieldKey: "fye" })}
+            <div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 8, marginBottom: 8 }}>
+                {/* 公司状态开关 */}
+                <div style={{ background: r.status === "STRIKE OFF" ? "#FEF2F2" : "#F0FDF4", borderRadius: 10, padding: "10px 14px", transition: "background .2s" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontSize: 12, color: "#A8A29E", fontWeight: 700 }}>状态</span>
+                    <div onClick={() => {
+                      const next = r.status === "STRIKE OFF" ? "LIVE COMPANY" : "STRIKE OFF";
+                      const updated = { ...r, status: next };
+                      setSelected(updated); setData(prev => prev.map(item => item._id === updated._id ? updated : item));
+                      setDetailSaved(true); setTimeout(() => setDetailSaved(false), 1500);
+                      addLog("修改", r.company, "状态", r.status || "LIVE COMPANY", next);
+                      void (async () => { try { await supabase.from("companies").update(rowToDb(updated)).eq("id", String(updated._id)); } catch {} })();
+                    }} style={{ width: 36, height: 20, borderRadius: 10, background: r.status === "STRIKE OFF" ? "#D6D3D1" : "#16A34A", cursor: "pointer", position: "relative", transition: "background .2s", flexShrink: 0 }}>
+                      <div style={{ position: "absolute", top: 2, left: r.status === "STRIKE OFF" ? 2 : 18, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left .2s", boxShadow: "0 1px 2px rgba(0,0,0,.2)" }} />
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: r.status === "STRIKE OFF" ? "#DC2626" : "#16A34A" }}>
+                    {r.status === "STRIKE OFF" ? "STRIKE OFF" : "LIVE COMPANY"}
+                  </div>
+                </div>
+                {Field({ label: "注册日期", fieldKey: "regDate", isDate: true })}
+                {Field({ label: "FYE", fieldKey: "fye", isDate: true })}
+                {Field({ label: "银行账户", fieldKey: "bank" })}
+                {Field({ label: "RORC", fieldKey: "rorc" })}
+                {/* 代运营 + 运营费 combined cell */}
+                <div style={{ background: r.managed === "YES" ? "#F0FDF4" : "#FEF2F2", borderRadius: 10, padding: "10px 14px", transition: "background .2s" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                    <span style={{ fontSize: 12, color: "#A8A29E", fontWeight: 700 }}>代运营</span>
+                    <div onClick={() => {
+                      const updated = { ...r, managed: r.managed === "YES" ? "" : "YES" };
+                      setSelected(updated); setData(prev => prev.map(item => item._id === updated._id ? updated : item));
+                      setDetailSaved(true); setTimeout(() => setDetailSaved(false), 1500);
+                      addLog("修改", r.company, "代运营", r.managed || "否", updated.managed || "否");
+                      void (async () => { try { await supabase.from("companies").update(rowToDb(updated)).eq("id", String(updated._id)); } catch {} })();
+                    }} style={{ width: 36, height: 20, borderRadius: 10, background: r.managed === "YES" ? "#16A34A" : "#D6D3D1", cursor: "pointer", position: "relative", transition: "background .2s", flexShrink: 0 }}>
+                      <div style={{ position: "absolute", top: 2, left: r.managed === "YES" ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left .2s", boxShadow: "0 1px 2px rgba(0,0,0,.2)" }} />
+                    </div>
+                  </div>
+                  <div style={{ borderTop: "1px solid #E7E5E4", paddingTop: 8 }}>
+                    <div style={{ fontSize: 12, color: "#A8A29E", marginBottom: 3, display: "flex", justifyContent: "space-between" }}>运营费/月{editing !== "opsFee" && <span style={{ fontSize: 11, color: "#D6D3D1" }}>✏️</span>}</div>
+                    {editing === "opsFee" ? (
+                      <input autoFocus value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => handleKeyDown(e, "opsFee")} onBlur={e => doSave("opsFee", e.target.value)} style={{ width: "100%", fontSize: 14, fontWeight: 600, padding: "4px 8px", border: "none", borderRadius: 6, outline: "none", background: "#fff", fontFamily: FONT, boxSizing: "border-box" }} />
+                    ) : (
+                      <div onClick={() => startEdit("opsFee", r.opsFee)} style={{ fontSize: 14, fontWeight: 600, cursor: "pointer", minHeight: 20 }}>{r.opsFee || "—"}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {/* 注册地址 - 长条 */}
               {Field({ label: "注册地址", fieldKey: "address" })}
-              {Field({ label: "银行账户", fieldKey: "bank" })}
             </div>
           )})}
+
+          {/* ── 客户 / EP 信息 ── */}
           {Section({ title: "客户 / EP 信息", children: (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 8 }}>
               {Field({ label: "客户姓名", fieldKey: "clientName" })}
               {Field({ label: "手机号", fieldKey: "phone" })}
               {Field({ label: "护照号", fieldKey: "passportNo" })}
+              {Field({ label: "护照到期日", fieldKey: "passportExpiry", isDate: true })}
               {Field({ label: "EP证件号", fieldKey: "epNo" })}
-              {ExpiryField({ label: "EP到期日", fieldKey: "epExpiry" })}
-              {Field({ label: "运营费/月", fieldKey: "opsFee" })}
+              {Field({ label: "EP到期日", fieldKey: "epExpiry", isDate: true })}
             </div>
           )})}
-          {Section({ title: "到期提醒", children: (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
-              {ExpiryField({ label: "挂名董事到期", fieldKey: "ndExpiry", personKey: "ndName" })}
-              {ExpiryField({ label: "秘书到期", fieldKey: "secExpiry", personKey: "secName" })}
-              {ExpiryField({ label: "地址到期", fieldKey: "addrExpiry" })}
-            </div>
-          )})}
-          {Section({ title: "报税 / 合规", children: (<>
+
+          {/* ── 到期提醒 ── */}
+          {Section({ title: "到期提醒", children: (() => {
+            // 只读卡片：EP到期 & 护照到期（数据来自客户信息，不可在此编辑）
+            const ReadOnlyExpiryCard = ({ label, dateStr, topLabel, topVal }: { label: string; dateStr: string; topLabel: string; topVal: string }) => {
+              const days = daysBetween(dateStr);
+              const u = urgency(days);
+              return (
+                <div style={{ background: u.bg || "#FAFAF9", borderRadius: 10, padding: "10px 14px" }}>
+                  <div style={{ fontSize: 12, color: "#A8A29E", marginBottom: 6, fontWeight: 700, display: "flex", justifyContent: "space-between" }}>
+                    {label}<span style={{ fontSize: 10, color: "#D6D3D1" }}>客户信息</span>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 24, marginBottom: 4 }}>
+                    <span style={{ fontSize: 11, color: "#A8A29E", flexShrink: 0, width: 30 }}>{topLabel}</span>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: "#44403C" }}>{topVal || <span style={{ color: "#D6D3D1" }}>—</span>}</div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, minHeight: 24 }}>
+                    <span style={{ fontSize: 11, color: "#A8A29E", flexShrink: 0, width: 30 }}>到期</span>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: u.color }}>
+                      {u.icon} {dateStr ? formatDateDisplay(dateStr) : <span style={{ color: "#D6D3D1", fontWeight: 400 }}>—</span>} {days !== null ? `(${u.label})` : ""}
+                    </div>
+                  </div>
+                </div>
+              );
+            };
+            const editableItems: { label: string; fieldKey: string; startFieldKey?: string }[] = [
+              { label: "挂名董事到期", fieldKey: "ndExpiry",      startFieldKey: "ndStart" },
+              { label: "秘书到期",     fieldKey: "secExpiry",     startFieldKey: "secStart" },
+              { label: "地址到期",     fieldKey: "addrExpiry",    startFieldKey: "addrStart" },
+              { label: "代运营到期",   fieldKey: "managedExpiry", startFieldKey: "managedStart" },
+            ];
+            return (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                {ReadOnlyExpiryCard({ label: "EP到期", dateStr: r.epExpiry || "", topLabel: "证件号", topVal: r.epNo || "" })}
+                {ReadOnlyExpiryCard({ label: "护照到期", dateStr: r.passportExpiry || "", topLabel: "护照号", topVal: r.passportNo || "" })}
+                {editableItems.map(i => <div key={i.fieldKey}>{ExpiryField({ label: i.label, fieldKey: i.fieldKey, startFieldKey: i.startFieldKey })}</div>)}
+              </div>
+            );
+          })()})}
+
+          {/* ── 人员与股权 ── */}
+          {Section({ title: "人员与股权", children: (() => {
+            let directors: {name: string; role: string}[] = [];
+            try { directors = JSON.parse(r.directorsJson || "[]"); } catch { directors = []; }
+            let shareholders: BizFileShareholder[] = [];
+            try { shareholders = JSON.parse(r.shareholdersJson || "[]"); } catch { shareholders = []; }
+            let changeLogs: {date: string; type: "director"|"shareholder"; note: string}[] = [];
+            try { changeLogs = JSON.parse(r.personnelChangeLogs || "[]"); } catch { changeLogs = []; }
+            const directorLogs = changeLogs.filter(l => l.type === "director");
+            const shareholderLogs = changeLogs.filter(l => l.type === "shareholder");
+
+            const handlePersonnelRescan = async (file: File) => {
+              setPersonnelRescanning(true);
+              setPersonnelRescanError("");
+              try {
+                const data = await parseBizFilePdf(file);
+                // Build new directors list, preserve existing roles
+                const roleMap: Record<string, string> = {};
+                directors.forEach(d => { roleMap[d.name] = d.role; });
+                const newDirectors = (data.directors || []).map(name => ({
+                  name, role: roleMap[name] || "director"
+                }));
+                if (data.secretary) newDirectors.push({ name: data.secretary, role: roleMap[data.secretary] || "secretary" });
+                const newShareholders: BizFileShareholder[] = data.shareholders || [];
+
+                // Detect changes
+                const oldDirNames = new Set(directors.map(d => d.name));
+                const newDirNames = new Set(newDirectors.map(d => d.name));
+                const dirChanged = [...newDirNames].some(n => !oldDirNames.has(n)) || [...oldDirNames].some(n => !newDirNames.has(n));
+
+                const oldShStr = JSON.stringify(shareholders.map(s => `${s.name}:${s.shares}`).sort());
+                const newShStr = JSON.stringify(newShareholders.map(s => `${s.name}:${s.shares}`).sort());
+                const shChanged = oldShStr !== newShStr;
+
+                const today = new Date().toISOString().split("T")[0];
+                const newLogs = [...changeLogs];
+                if (dirChanged) newLogs.push({ date: today, type: "director", note: "有过董事变更" });
+                if (shChanged) newLogs.push({ date: today, type: "shareholder", note: "有过股东或股权变更" });
+
+                const updated = {
+                  ...r,
+                  directorsJson: JSON.stringify(newDirectors),
+                  shareholdersJson: JSON.stringify(newShareholders),
+                  personnelChangeLogs: JSON.stringify(newLogs),
+                };
+                setSelected(updated);
+                setData(prev => prev.map(item => item._id === updated._id ? updated : item));
+                setDetailSaved(true);
+                setTimeout(() => setDetailSaved(false), 1500);
+                if (dirChanged || shChanged) {
+                  addLog("人员变更", r.company, "", "", dirChanged && shChanged ? "董事+股东变更" : dirChanged ? "董事变更" : "股东变更");
+                }
+                await supabase.from("companies").update(rowToDb(updated)).eq("id", String(updated._id));
+              } catch (e) {
+                setPersonnelRescanError((e as Error).message || "扫描失败");
+              } finally {
+                setPersonnelRescanning(false);
+              }
+            };
+
+            const ChangeLogList = ({ logs }: { logs: typeof changeLogs }) => (
+              logs.length > 0 ? (
+                <div style={{ marginTop: 8, display: "flex", flexDirection: "column", gap: 4 }}>
+                  {logs.map((l, i) => (
+                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: "#FEF9C3", borderRadius: 8, border: "1px solid #FDE68A" }}>
+                      <span style={{ fontSize: 12 }}>📋</span>
+                      <span style={{ fontSize: 12, fontWeight: 600, color: "#92400E" }}>{l.note}</span>
+                      <span style={{ fontSize: 11, color: "#A8A29E", marginLeft: "auto" }}>{formatDateDisplay(l.date)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null
+            );
+
+            const roleLabel: Record<string, {label: string; color: string; bg: string}> = {
+              nominal: { label: "挂名董事", color: "#2563EB", bg: "#DBEAFE" },
+              client:  { label: "客户", color: "#16A34A", bg: "#DCFCE7" },
+              secretary: { label: "秘书", color: "#D97706", bg: "#FEF3C7" },
+              director: { label: "董事", color: "#7C3AED", bg: "#F3E8FF" },
+            };
+
+            // Rescan button + hidden input
+            const rescanBtn = (
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {personnelRescanError && <span style={{ fontSize: 11, color: "#DC2626" }}>{personnelRescanError}</span>}
+                <label style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 8, background: "#F5F3FF", border: "1px solid #DDD6FE", cursor: personnelRescanning ? "not-allowed" : "pointer", fontSize: 12, fontWeight: 600, color: "#7C3AED" }}>
+                  {personnelRescanning ? "⏳ 扫描中..." : "📄 扫描 BizFile 更新"}
+                  <input type="file" accept=".pdf,application/pdf" style={{ display: "none" }} disabled={personnelRescanning}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) { handlePersonnelRescan(f); e.target.value = ""; } }} />
+                </label>
+              </div>
+            );
+
+            const hasData = directors.length > 0 || shareholders.length > 0 || r.ndName || r.secName;
+            if (!hasData) return (
+              <div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>{rescanBtn}</div>
+                <div style={{ padding: "12px 0", fontSize: 13, color: "#A8A29E", textAlign: "center" }}>暂无人员信息 · 通过上传 BizFile 自动填充</div>
+              </div>
+            );
+            return (
+              <div>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>{rescanBtn}</div>
+                {/* Directors / Officers */}
+                {(directors.length > 0 || r.ndName || r.secName) && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#A8A29E", textTransform: "uppercase", marginBottom: 8 }}>董事 / 秘书</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {directors.length > 0 ? directors.map((d, i) => {
+                        const cfg = roleLabel[d.role] || { label: d.role, color: "#78716C", bg: "#F5F5F4" };
+                        return (
+                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#FAFAF9", borderRadius: 10, border: "1px solid #F0EFEE" }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 8, background: cfg.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: cfg.color, flexShrink: 0 }}>{(d.name || "?")[0]}</div>
+                            <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{d.name}</span>
+                            <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
+                          </div>
+                        );
+                      }) : (
+                        <>
+                          {r.ndName && <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#FAFAF9", borderRadius: 10 }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "#DBEAFE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#2563EB", flexShrink: 0 }}>{r.ndName[0]}</div>
+                            <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{r.ndName}</span>
+                            <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "#DBEAFE", color: "#2563EB" }}>挂名董事</span>
+                          </div>}
+                          {r.secName && <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#FAFAF9", borderRadius: 10 }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "#FEF3C7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#D97706", flexShrink: 0 }}>{r.secName[0]}</div>
+                            <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{r.secName}</span>
+                            <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "#FEF3C7", color: "#D97706" }}>秘书</span>
+                          </div>}
+                        </>
+                      )}
+                    </div>
+                    {ChangeLogList({ logs: directorLogs })}
+                  </div>
+                )}
+                {/* Shareholders */}
+                {shareholders.length > 0 && (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#A8A29E", textTransform: "uppercase", marginBottom: 8 }}>股东</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                      {shareholders.map((s, i) => {
+                        const total = shareholders.reduce((sum, x) => sum + (x.shares || 0), 0);
+                        const pct = total > 0 ? Math.round(s.shares / total * 100) : 0;
+                        return (
+                          <div key={i} style={{ padding: "10px 14px", background: "#FAFAF9", borderRadius: 10, border: "1px solid #F0EFEE" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                              <div style={{ width: 32, height: 32, borderRadius: 8, background: "#F3E8FF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#7C3AED", flexShrink: 0 }}>{(s.name || "?")[0]}</div>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ fontSize: 14, fontWeight: 600 }}>{s.name}</div>
+                                <div style={{ fontSize: 12, color: "#78716C", marginTop: 2 }}>{s.shares?.toLocaleString()} 股 {s.shareType} · {s.currency}</div>
+                              </div>
+                              <div style={{ textAlign: "right" }}>
+                                <div style={{ fontSize: 16, fontWeight: 800, color: "#7C3AED" }}>{pct}%</div>
+                                <div style={{ fontSize: 11, color: "#A8A29E" }}>持股</div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {/* 注册资本三格 */}
+                    {(() => {
+                      const parseAmt = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
+                      const getCurrency = (s: string) => { const m = s.match(/[A-Z]{2,3}/); return m ? m[0] + " " : ""; };
+                      const reg = r.registeredCapital || "";
+                      const paid = r.paidCapital || "";
+                      const regAmt = parseAmt(reg);
+                      const paidAmt = parseAmt(paid);
+                      const unpaidAmt = Math.max(0, regAmt - paidAmt);
+                      const currency = getCurrency(reg) || getCurrency(paid);
+                      const fullyPaid = reg && paid && unpaidAmt === 0;
+                      return (
+                        <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8 }}>
+                          <div style={{ flex: 1 }}>{Field({ label: "总注册资本", fieldKey: "registeredCapital" })}</div>
+                          <div style={{ flex: 1 }}>
+                            <div onClick={() => editing !== "paidCapital" && startEdit("paidCapital", paid)}
+                              style={{ background: "#FAFAF9", borderRadius: 10, padding: "10px 14px", cursor: editing === "paidCapital" ? "default" : "pointer", border: editing === "paidCapital" ? "2px solid #0C0A09" : "2px solid transparent", transition: "border .15s" }}>
+                              <div style={{ fontSize: 12, color: "#A8A29E", marginBottom: 3, display: "flex", justifyContent: "space-between" }}>
+                                已缴资本{editing !== "paidCapital" && <span style={{ fontSize: 11, color: "#D6D3D1" }}>✏️</span>}
+                              </div>
+                              {editing === "paidCapital" ? (
+                                <input autoFocus value={editVal} onChange={e => setEditVal(e.target.value)}
+                                  onKeyDown={e => handleKeyDown(e, "paidCapital")} onBlur={e => doSave("paidCapital", e.target.value)}
+                                  style={{ width: "100%", fontSize: 14, fontWeight: 600, padding: "4px 8px", border: "none", borderRadius: 6, outline: "none", background: "#fff", fontFamily: FONT, boxSizing: "border-box" }} />
+                              ) : (
+                                <div style={{ fontSize: 14, fontWeight: 600 }}>
+                                  {paid ? `${currency}${paidAmt.toLocaleString()}` : "—"}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div style={{ flex: 1, background: "#FAFAF9", borderRadius: 10, padding: "10px 14px" }}>
+                            <div style={{ fontSize: 12, color: "#A8A29E", marginBottom: 3 }}>未缴资本</div>
+                            <div style={{ fontSize: 14, fontWeight: 600, color: unpaidAmt > 0 ? "#DC2626" : "#16A34A" }}>
+                              {reg ? `${currency}${unpaidAmt.toLocaleString()}` : "—"}
+                            </div>
+                          </div>
+                          {fullyPaid && (
+                            <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, background: "#F0FDF4", border: "1px solid #BBF7D0", borderRadius: 8, padding: "6px 10px" }}>
+                              <span style={{ fontSize: 16 }}>✅</span>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#16A34A" }}>已实缴</span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                    {ChangeLogList({ logs: shareholderLogs })}
+                  </div>
+                )}
+              </div>
+            );
+          })()})}
+
+          {/* ── 工作备注 ── */}
+          {Section({ title: "工作备注", children: (<>
             <div style={{ marginBottom: 12 }}>
               {Field({ label: "工作备注", fieldKey: "work", fill: r.work && /(做报表|发invoice)/i.test(r.work) ? "#FEF2F2" : "" })}
             </div>
@@ -877,8 +1516,8 @@ export default function SecretaryOS() {
                 { key: "ya2025", label: "YA 2025 报税" },
                 { key: "ya2026", label: "YA 2026 报税" },
                 { key: "ltr", label: "LTR / Invoice 已发" },
-              ].map(todo => (
-                <TodoRow key={todo.key} done={isDone(r[todo.key as keyof CompanyRow] as string || "")} label={todo.label} onToggle={() => toggleTodo(todo.key)} />
+              ].filter(todo => !hiddenDefaultKeys.has(todo.key)).map(todo => (
+                <TodoRow key={todo.key} done={isDone(r[todo.key as keyof CompanyRow] as string || "")} label={todo.label} onToggle={() => toggleTodo(todo.key)} onRemove={() => deleteDefaultTodo(todo.key)} />
               ))}
               {customTodos.map(todo => (
                 <TodoRow key={todo.id} done={todo.done} label={todo.text}
@@ -1024,26 +1663,196 @@ export default function SecretaryOS() {
       {showImport && <ImportModal />}
 
       {showNewForm && (
-        <div onClick={() => setShowNewForm(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 20, maxWidth: 480, width: "100%", padding: 28 }}>
-            <h2 style={{ fontSize: 20, fontWeight: 800, marginBottom: 4 }}>➕ 新增公司</h2>
-            <p style={{ fontSize: 13, color: colors.muted, marginBottom: 20 }}>输入公司名称和 UEN 创建记录，其他信息之后在详情页填写</p>
-            <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: colors.muted, display: "block", marginBottom: 4 }}>公司名称 *</label>
-              <input value={newCompany} onChange={e => setNewCompany(e.target.value)} onKeyDown={e => e.key === "Enter" && !e.nativeEvent.isComposing && handleAddCompany()} placeholder="例: RICH INTERNATIONAL BUSINESS CONSULTING PTE. LTD." autoFocus
-                style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `2px solid ${colors.border}`, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: FONT }}
-                onFocus={e => (e.target.style.borderColor = "#0C0A09")} onBlur={e => (e.target.style.borderColor = colors.border)} />
+        <div onClick={closeNewForm} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 20, maxWidth: 540, width: "100%", padding: 28, maxHeight: "92vh", overflowY: "auto" }}>
+
+            {/* ── Header with step indicator ── */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
+              <h2 style={{ fontSize: 20, fontWeight: 800, margin: 0 }}>➕ 新增公司</h2>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                {[1, 2].map(s => (
+                  <div key={s} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, background: newFormStep === s ? "#0C0A09" : newFormStep > s ? "#16A34A" : "#E7E5E4", color: newFormStep >= s ? "#fff" : "#A8A29E" }}>
+                      {newFormStep > s ? "✓" : s}
+                    </div>
+                    <span style={{ fontSize: 11, color: newFormStep === s ? colors.text : colors.muted, fontWeight: newFormStep === s ? 700 : 400 }}>
+                      {s === 1 ? "公司信息" : "客户信息"}
+                    </span>
+                    {s < 2 && <span style={{ color: "#D6D3D1", fontSize: 12, marginLeft: 2 }}>›</span>}
+                  </div>
+                ))}
+              </div>
             </div>
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: colors.muted, display: "block", marginBottom: 4 }}>UEN（选填）</label>
-              <input value={newUen} onChange={e => setNewUen(e.target.value)} onKeyDown={e => e.key === "Enter" && !e.nativeEvent.isComposing && handleAddCompany()} placeholder="例: 202609584R"
-                style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `2px solid ${colors.border}`, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: FONT }}
-                onFocus={e => (e.target.style.borderColor = "#0C0A09")} onBlur={e => (e.target.style.borderColor = colors.border)} />
-            </div>
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button onClick={() => { setShowNewForm(false); setNewCompany(""); setNewUen(""); }} style={{ padding: "10px 20px", borderRadius: 10, border: `1px solid ${colors.border}`, background: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>取消</button>
-              <button onClick={handleAddCompany} disabled={!newCompany.trim()} style={{ padding: "10px 24px", borderRadius: 10, border: "none", cursor: newCompany.trim() ? "pointer" : "not-allowed", background: newCompany.trim() ? "#16A34A" : "#D6D3D1", color: "#fff", fontWeight: 700, fontSize: 14 }}>创建并填写详情</button>
-            </div>
+
+            {newFormStep === 1 ? (<>
+
+              {/* ── Mode switcher (Step 1 only) ── */}
+              <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "#F5F5F4", padding: 4, borderRadius: 12 }}>
+                {([["manual", "✏️ 手动输入"], ["bizfile", "📄 上传 BizFile"]] as [string, string][]).map(([k, l]) => (
+                  <button key={k} onClick={() => { setBizFileMode(k === "bizfile"); setExtractedBizData(null); setBizFileError(""); setDirectorRoles([]); }}
+                    style={{ flex: 1, padding: "8px 12px", borderRadius: 9, border: "none", cursor: "pointer", fontWeight: 600, fontSize: 13, transition: "all .15s", background: (k === "bizfile") === bizFileMode ? "#fff" : "transparent", color: (k === "bizfile") === bizFileMode ? colors.text : colors.muted, boxShadow: (k === "bizfile") === bizFileMode ? "0 1px 3px rgba(0,0,0,.1)" : "none" }}>{l}</button>
+                ))}
+              </div>
+
+              {!bizFileMode ? (
+                /* ── Manual: company name + UEN ── */
+                <>
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: colors.muted, display: "block", marginBottom: 4 }}>公司名称 *</label>
+                    <input value={newCompany} onChange={e => setNewCompany(e.target.value)} onKeyDown={e => e.key === "Enter" && !e.nativeEvent.isComposing && handleAddCompany()} placeholder="例: RICH INTERNATIONAL BUSINESS CONSULTING PTE. LTD." autoFocus
+                      style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `2px solid ${colors.border}`, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: FONT }}
+                      onFocus={e => (e.target.style.borderColor = "#0C0A09")} onBlur={e => (e.target.style.borderColor = colors.border)} />
+                  </div>
+                  <div style={{ marginBottom: 24 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: colors.muted, display: "block", marginBottom: 4 }}>UEN（选填）</label>
+                    <input value={newUen} onChange={e => setNewUen(e.target.value)} onKeyDown={e => e.key === "Enter" && !e.nativeEvent.isComposing && handleAddCompany()} placeholder="例: 202609584R"
+                      style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `2px solid ${colors.border}`, fontSize: 15, outline: "none", boxSizing: "border-box", fontFamily: FONT }}
+                      onFocus={e => (e.target.style.borderColor = "#0C0A09")} onBlur={e => (e.target.style.borderColor = colors.border)} />
+                  </div>
+                  <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                    <button onClick={closeNewForm} style={{ padding: "10px 20px", borderRadius: 10, border: `1px solid ${colors.border}`, background: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>取消</button>
+                    <button onClick={handleAddCompany} disabled={!newCompany.trim()} style={{ padding: "10px 24px", borderRadius: 10, border: "none", cursor: newCompany.trim() ? "pointer" : "not-allowed", background: newCompany.trim() ? "#0C0A09" : "#D6D3D1", color: "#fff", fontWeight: 700, fontSize: 14 }}>下一步 →</button>
+                  </div>
+                </>
+              ) : !extractedBizData ? (
+                /* ── BizFile: upload area ── */
+                <div>
+                  <p style={{ fontSize: 13, color: colors.muted, marginBottom: 16 }}>上传 ACRA BizFile PDF，Claude AI 自动识别公司信息并填入</p>
+                  {bizFileExtracting ? (
+                    <div style={{ textAlign: "center", padding: "44px 20px" }}>
+                      <div style={{ fontSize: 40, marginBottom: 14 }}>⏳</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 6 }}>正在识别中...</div>
+                      <div style={{ fontSize: 13, color: colors.muted }}>Claude AI 正在读取 BizFile，请稍候</div>
+                    </div>
+                  ) : (
+                    <>
+                      <label style={{ display: "block", cursor: "pointer" }}>
+                        <div style={{ border: "2px dashed #D6D3D1", borderRadius: 14, padding: "36px 20px", textAlign: "center", transition: "all .15s" }}
+                          onMouseEnter={e => { (e.currentTarget.style.borderColor = "#0C0A09"); (e.currentTarget.style.background = "#FAFAF9"); }}
+                          onMouseLeave={e => { (e.currentTarget.style.borderColor = "#D6D3D1"); (e.currentTarget.style.background = ""); }}>
+                          <div style={{ fontSize: 40, marginBottom: 10 }}>📄</div>
+                          <div style={{ fontSize: 15, fontWeight: 700, color: colors.text, marginBottom: 6 }}>点击上传 BizFile PDF</div>
+                          <div style={{ fontSize: 13, color: colors.muted }}>支持 ACRA 官方 BizFile，自动提取所有公司信息</div>
+                        </div>
+                        <input type="file" accept=".pdf,application/pdf" onChange={handleBizFileUpload} style={{ display: "none" }} />
+                      </label>
+                      {bizFileError && <div style={{ marginTop: 12, padding: "10px 14px", borderRadius: 10, background: "#FEF2F2", color: "#DC2626", fontSize: 13, fontWeight: 600 }}>⚠️ {bizFileError}</div>}
+                    </>
+                  )}
+                  <div style={{ marginTop: 16, display: "flex", justifyContent: "flex-end" }}>
+                    <button onClick={closeNewForm} style={{ padding: "10px 20px", borderRadius: 10, border: `1px solid ${colors.border}`, background: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>取消</button>
+                  </div>
+                </div>
+              ) : (
+                /* ── BizFile: extracted preview + director assignment ── */
+                <div>
+                  <div style={{ background: "#F0FDF4", borderRadius: 10, padding: "10px 14px", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
+                    <span>✅</span><span style={{ fontSize: 13, fontWeight: 600, color: "#16A34A" }}>识别成功！请标记董事角色后进入下一步</span>
+                  </div>
+
+                  {/* Company info summary */}
+                  <div style={{ display: "grid", gap: 5, marginBottom: 16 }}>
+                    {([
+                      ["公司名称", extractedBizData.company],
+                      ["UEN", extractedBizData.uen],
+                      ["注册日期", formatDateDisplay(extractedBizData.regDate)],
+                      ["状态", extractedBizData.status],
+                      ["注册地址", extractedBizData.address],
+                      ["股东", extractedBizData.shareholders?.map(s => `${s.name} (${s.shares}股)`).join("、")],
+                      ["实缴资本", extractedBizData.paidUpCapital],
+                    ] as [string, string][]).filter(([, v]) => v).map(([label, value]) => (
+                      <div key={label} style={{ display: "grid", gridTemplateColumns: "72px 1fr", gap: 8, padding: "7px 10px", background: "#FAFAF9", borderRadius: 8, alignItems: "start" }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: colors.muted, paddingTop: 1 }}>{label}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, wordBreak: "break-word" }}>{value}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Director role assignment */}
+                  {directorRoles.length > 0 && (
+                    <div style={{ marginBottom: 16 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: "#A8A29E", textTransform: "uppercase", marginBottom: 8 }}>
+                        董事标记 · 点击标签分配角色
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {directorRoles.map((d, i) => (
+                          <div key={d.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#FAFAF9", borderRadius: 10, border: "1px solid #F0EFEE" }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "#E7E5E4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#78716C", flexShrink: 0 }}>{d.name[0]}</div>
+                            <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{d.name}</span>
+                            {(["nominal", "client"] as const).map(tag => {
+                              const active = d.tag === tag;
+                              const cfg = tag === "nominal"
+                                ? { label: "挂名董事", activeColor: "#2563EB", activeBg: "#DBEAFE" }
+                                : { label: "是客户", activeColor: "#16A34A", activeBg: "#DCFCE7" };
+                              return (
+                                <button key={tag} onClick={() => setDirectorRoles(prev => prev.map((item, idx) => {
+                                  if (idx === i) return { ...item, tag: item.tag === tag ? null : tag };
+                                  if (item.tag === tag) return { ...item, tag: null };
+                                  return item;
+                                }))} style={{ padding: "4px 10px", borderRadius: 6, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: active ? cfg.activeBg : "#EDEDED", color: active ? cfg.activeColor : "#A8A29E", transition: "all .15s" }}>
+                                  {cfg.label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                      {extractedBizData.secretary && (
+                        <div style={{ marginTop: 6, padding: "8px 12px", background: "#FAFAF9", borderRadius: 10, border: "1px solid #F0EFEE", display: "flex", alignItems: "center", gap: 10 }}>
+                          <div style={{ width: 32, height: 32, borderRadius: 8, background: "#FEF3C7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 700, color: "#D97706", flexShrink: 0 }}>{extractedBizData.secretary[0]}</div>
+                          <span style={{ flex: 1, fontSize: 13, fontWeight: 600 }}>{extractedBizData.secretary}</span>
+                          <span style={{ padding: "4px 10px", borderRadius: 6, background: "#FEF3C7", color: "#D97706", fontSize: 12, fontWeight: 600 }}>秘书</span>
+                        </div>
+                      )}
+                      <p style={{ fontSize: 12, color: "#A8A29E", marginTop: 8 }}>提示：挂名董事是我们提供的挂名服务；如果其中一位董事是你的客户，标记"是客户"可自动填入客户姓名</p>
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                    <button onClick={() => { setExtractedBizData(null); setDirectorRoles([]); setBizFileError(""); }} style={{ padding: "10px 20px", borderRadius: 10, border: `1px solid ${colors.border}`, background: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>重新上传</button>
+                    <button onClick={goToStep2} style={{ padding: "10px 24px", borderRadius: 10, border: "none", background: "#0C0A09", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 14 }}>下一步 →</button>
+                  </div>
+                </div>
+              )}
+
+            </>) : (
+              /* ══ Step 2: Client info ══ */
+              <div>
+                <div style={{ background: "#FFFBEB", borderRadius: 10, padding: "10px 14px", marginBottom: 20, fontSize: 13, color: "#92400E" }}>
+                  💡 客户信息可跳过，之后在详情页随时补充
+                </div>
+
+                {/* Pre-fill hint for BizFile mode */}
+                {bizFileMode && directorRoles.find(d => d.tag === "client") && (
+                  <div style={{ background: "#F0FDF4", borderRadius: 10, padding: "10px 14px", marginBottom: 16, fontSize: 13, color: "#16A34A", fontWeight: 600 }}>
+                    ✅ 已从 BizFile 预填客户姓名
+                  </div>
+                )}
+
+                {[
+                  { label: "客户姓名", value: newClientName, set: setNewClientName, placeholder: "客户真实姓名", autoFocus: true },
+                  { label: "手机号", value: newPhone, set: setNewPhone, placeholder: "例: +65 9123 4567" },
+                  { label: "护照号", value: newPassportNo, set: setNewPassportNo, placeholder: "例: E12345678" },
+                  { label: "EP证件号", value: newEpNo, set: setNewEpNo, placeholder: "例: EP1234567A" },
+                ].map(f => (
+                  <div key={f.label} style={{ marginBottom: 14 }}>
+                    <label style={{ fontSize: 12, fontWeight: 600, color: colors.muted, display: "block", marginBottom: 4 }}>{f.label}</label>
+                    <input value={f.value} onChange={e => f.set(e.target.value)} placeholder={f.placeholder} autoFocus={f.autoFocus}
+                      style={{ width: "100%", padding: "12px 14px", borderRadius: 10, border: `2px solid ${colors.border}`, fontSize: 14, outline: "none", boxSizing: "border-box", fontFamily: FONT }}
+                      onFocus={e => (e.target.style.borderColor = "#0C0A09")} onBlur={e => (e.target.style.borderColor = colors.border)} />
+                  </div>
+                ))}
+
+                <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "space-between" }}>
+                  <button onClick={() => setNewFormStep(1)} style={{ padding: "10px 18px", borderRadius: 10, border: `1px solid ${colors.border}`, background: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>← 返回</button>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={() => handleFinalCreate(true)} style={{ padding: "10px 18px", borderRadius: 10, border: `1px solid ${colors.border}`, background: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14, color: colors.muted }}>跳过</button>
+                    <button onClick={() => handleFinalCreate(false)} style={{ padding: "10px 24px", borderRadius: 10, border: "none", background: "#16A34A", color: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 14 }}>✅ 创建公司</button>
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
         </div>
       )}
