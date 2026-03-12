@@ -1323,16 +1323,16 @@ export default function SecretaryOS() {
                 const data = await parseBizFilePdf(file);
                 // Build new directors list, preserve existing roles
                 const roleMap: Record<string, string> = {};
-                directors.forEach(d => { roleMap[d.name] = d.role; });
+                directors.forEach(d => { roleMap[d.name.toUpperCase()] = d.role; });
                 const newDirectors = (data.directors || []).map(name => ({
-                  name, role: roleMap[name] || "director"
+                  name: name.toUpperCase(), role: roleMap[name.toUpperCase()] || "director"
                 }));
-                if (data.secretary) newDirectors.push({ name: data.secretary, role: roleMap[data.secretary] || "secretary" });
+                if (data.secretary) newDirectors.push({ name: data.secretary.toUpperCase(), role: roleMap[data.secretary.toUpperCase()] || "secretary" });
                 const newShareholders: BizFileShareholder[] = data.shareholders || [];
 
                 // Detect changes
-                const oldDirNames = new Set(directors.map(d => d.name));
-                const newDirNames = new Set(newDirectors.map(d => d.name));
+                const oldDirNames = new Set(directors.map(d => d.name.toUpperCase()));
+                const newDirNames = new Set(newDirectors.map(d => d.name.toUpperCase()));
                 const dirChanged = [...newDirNames].some(n => !oldDirNames.has(n)) || [...oldDirNames].some(n => !newDirNames.has(n));
 
                 const oldShStr = JSON.stringify(shareholders.map(s => `${s.name}:${s.shares}`).sort());
