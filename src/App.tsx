@@ -93,6 +93,7 @@ const mapRow = (row: Record<string, string>) => {
     paidCapital: "",
     rorc: "",
     personnelChangeLogs: "[]",
+    strikeOffDate: "",
   };
 };
 
@@ -148,6 +149,7 @@ const dbToRow = (db: any): CompanyRow => ({
   paidCapital: db.paid_capital || "",
   rorc: db.rorc || "",
   personnelChangeLogs: db.personnel_change_logs || "[]",
+  strikeOffDate: db.strike_off_date || "",
 });
 
 const rowToDb = (row: CompanyRow) => ({
@@ -198,6 +200,7 @@ const rowToDb = (row: CompanyRow) => ({
   paid_capital: row.paidCapital || "",
   rorc: row.rorc || "",
   personnel_change_logs: row.personnelChangeLogs || "[]",
+  strike_off_date: row.strikeOffDate || "",
 });
 
 type LogEntry = { id: number; time: string; action: string; company: string; field: string; oldVal: string; newVal: string };
@@ -322,6 +325,8 @@ export default function SecretaryOS() {
   const [detailSaved, setDetailSaved] = useState(false);
   const [personnelRescanning, setPersonnelRescanning] = useState(false);
   const [personnelRescanError, setPersonnelRescanError] = useState("");
+  const [strikeOffModal, setStrikeOffModal] = useState(false);
+  const [strikeOffDateInput, setStrikeOffDateInput] = useState("");
 
   const FIELD_LABELS: Record<string, string> = {
     company: "公司名称", uen: "UEN", type: "公司类型", status: "状态",
@@ -495,7 +500,7 @@ export default function SecretaryOS() {
       customTodos: "", previousNames: "",
       managed: "", managedExpiry: "", managedStart: "",
       epStart: "", ndStart: "", secStart: "", addrStart: "",
-      paidCapital: "", rorc: "", personnelChangeLogs: "[]",
+      paidCapital: "", rorc: "", personnelChangeLogs: "[]", strikeOffDate: "",
       directorsJson, shareholdersJson, registeredCapital,
     };
     setData(prev => [...prev, record]);
@@ -1193,12 +1198,18 @@ export default function SecretaryOS() {
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
                     <span style={{ fontSize: 12, color: "#A8A29E", fontWeight: 700 }}>状态</span>
                     <div onClick={() => {
-                      const next = r.status === "STRIKE OFF" ? "LIVE COMPANY" : "STRIKE OFF";
-                      const updated = { ...r, status: next };
-                      setSelected(updated); setData(prev => prev.map(item => item._id === updated._id ? updated : item));
-                      setDetailSaved(true); setTimeout(() => setDetailSaved(false), 1500);
-                      addLog("修改", r.company, "状态", r.status || "LIVE COMPANY", next);
-                      void (async () => { try { await supabase.from("companies").update(rowToDb(updated)).eq("id", String(updated._id)); } catch {} })();
+                      if (r.status === "STRIKE OFF") {
+                        // 恢复 LIVE
+                        const updated = { ...r, status: "LIVE COMPANY", strikeOffDate: "" };
+                        setSelected(updated); setData(prev => prev.map(item => item._id === updated._id ? updated : item));
+                        setDetailSaved(true); setTimeout(() => setDetailSaved(false), 1500);
+                        addLog("修改", r.company, "状态", "STRIKE OFF", "LIVE COMPANY");
+                        void (async () => { try { await supabase.from("companies").update(rowToDb(updated)).eq("id", String(updated._id)); } catch {} })();
+                      } else {
+                        // 弹出日期确认
+                        setStrikeOffDateInput("");
+                        setStrikeOffModal(true);
+                      }
                     }} style={{ width: 36, height: 20, borderRadius: 10, background: r.status === "STRIKE OFF" ? "#D6D3D1" : "#16A34A", cursor: "pointer", position: "relative", transition: "background .2s", flexShrink: 0 }}>
                       <div style={{ position: "absolute", top: 2, left: r.status === "STRIKE OFF" ? 2 : 18, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left .2s", boxShadow: "0 1px 2px rgba(0,0,0,.2)" }} />
                     </div>
@@ -1206,6 +1217,9 @@ export default function SecretaryOS() {
                   <div style={{ fontSize: 14, fontWeight: 700, color: r.status === "STRIKE OFF" ? "#DC2626" : "#16A34A" }}>
                     {r.status === "STRIKE OFF" ? "STRIKE OFF" : "LIVE COMPANY"}
                   </div>
+                  {r.status === "STRIKE OFF" && r.strikeOffDate && (
+                    <div style={{ fontSize: 12, color: "#DC2626", marginTop: 4, fontWeight: 500 }}>{formatDateDisplay(r.strikeOffDate)}</div>
+                  )}
                 </div>
                 {Field({ label: "注册日期", fieldKey: "regDate", isDate: true })}
                 {Field({ label: "FYE", fieldKey: "fye", isDate: true })}
@@ -1661,6 +1675,49 @@ export default function SecretaryOS() {
       </div>
 
       {showImport && <ImportModal />}
+
+      {/* ── Strike Off 确认弹窗 ── */}
+      {strikeOffModal && selected && (
+        <div onClick={() => setStrikeOffModal(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000, padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 20, maxWidth: 380, width: "100%", padding: 28 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, marginBottom: 6 }}>确认 Strike Off</div>
+            <div style={{ fontSize: 13, color: "#78716C", marginBottom: 20 }}>
+              请填写 <strong>{selected.company}</strong> 的 Strike Off 日期，确认后该公司到期提醒将停止。
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#A8A29E", marginBottom: 6 }}>STRIKE OFF 日期</div>
+              <input
+                type="date"
+                value={strikeOffDateInput}
+                onChange={e => setStrikeOffDateInput(e.target.value)}
+                style={{ width: "100%", padding: "10px 14px", borderRadius: 10, border: "2px solid #F0EFEE", fontSize: 14, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}
+                autoFocus
+              />
+            </div>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button onClick={() => setStrikeOffModal(false)} style={{ padding: "10px 20px", borderRadius: 10, border: "1px solid #E7E5E4", background: "#fff", cursor: "pointer", fontWeight: 600, fontSize: 14 }}>取消</button>
+              <button
+                disabled={!strikeOffDateInput}
+                onClick={() => {
+                  const r = selected;
+                  const dateFormatted = (() => {
+                    const d = new Date(strikeOffDateInput);
+                    const months = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
+                    return `${String(d.getDate()).padStart(2,"0")} ${months[d.getMonth()]} ${d.getFullYear()}`;
+                  })();
+                  const updated = { ...r, status: "STRIKE OFF", strikeOffDate: dateFormatted };
+                  setSelected(updated); setData(prev => prev.map(item => item._id === updated._id ? updated : item));
+                  setDetailSaved(true); setTimeout(() => setDetailSaved(false), 1500);
+                  addLog("修改", r.company, "状态", r.status || "LIVE COMPANY", "STRIKE OFF");
+                  void (async () => { try { await supabase.from("companies").update(rowToDb(updated)).eq("id", String(updated._id)); } catch {} })();
+                  setStrikeOffModal(false);
+                }}
+                style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: strikeOffDateInput ? "#DC2626" : "#F5F5F4", color: strikeOffDateInput ? "#fff" : "#A8A29E", cursor: strikeOffDateInput ? "pointer" : "default", fontWeight: 700, fontSize: 14 }}
+              >确认 Strike Off</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showNewForm && (
         <div onClick={closeNewForm} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
