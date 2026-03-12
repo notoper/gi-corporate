@@ -551,7 +551,7 @@ export default function SecretaryOS() {
       rows = rows.filter(r => Object.values(r).some(v => v && String(v).toLowerCase().includes(q)));
     }
     if (tab === "action") rows = rows.filter(r => r.work && /(做报表|发invoice|有流水)/i.test(r.work));
-    if (tab === "ep") rows = rows.filter(r => r.epNo);
+    if (tab === "ep") rows = rows.filter(r => r.epNo && r.epNo.trim() !== "" && r.epNo.trim() !== "-");
     if (tab === "closed") rows = rows.filter(r => r.work && /(关闭|关了|strike)/i.test(r.work));
     return rows;
   }, [mapped, search, tab]);
