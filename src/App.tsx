@@ -1323,11 +1323,11 @@ export default function SecretaryOS() {
                 const data = await parseBizFilePdf(file);
                 // Build new directors list, preserve existing roles
                 const roleMap: Record<string, string> = {};
-                directors.forEach(d => { roleMap[d.name.toUpperCase()] = d.role; });
+                directors.forEach(d => { roleMap[d.name.trim().toUpperCase()] = d.role; });
                 const newDirectors = (data.directors || []).map(name => ({
-                  name: name.toUpperCase(), role: roleMap[name.toUpperCase()] || "director"
+                  name: name.trim().toUpperCase(), role: roleMap[name.trim().toUpperCase()] || "director"
                 }));
-                if (data.secretary) newDirectors.push({ name: data.secretary.toUpperCase(), role: roleMap[data.secretary.toUpperCase()] || "secretary" });
+                if (data.secretary) newDirectors.push({ name: data.secretary.trim().toUpperCase(), role: roleMap[data.secretary.trim().toUpperCase()] || "secretary" });
                 const newShareholders: BizFileShareholder[] = data.shareholders || [];
 
                 // Detect changes
@@ -1415,11 +1415,20 @@ export default function SecretaryOS() {
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {directors.length > 0 ? directors.map((d, i) => {
                         const cfg = roleLabel[d.role] || { label: d.role, color: "#78716C", bg: "#F5F5F4" };
+                        const roleOrder = ["director", "nominal", "client", "secretary"];
+                        const nextRole = () => {
+                          const idx = roleOrder.indexOf(d.role);
+                          const next = roleOrder[(idx + 1) % roleOrder.length];
+                          const newDirs = directors.map((x, j) => j === i ? { ...x, role: next } : x);
+                          const updated = { ...r, directorsJson: JSON.stringify(newDirs) };
+                          setSelected(updated); setData(prev => prev.map(item => item._id === updated._id ? updated : item));
+                          void (async () => { try { await supabase.from("companies").update(rowToDb(updated)).eq("id", String(updated._id)); } catch {} })();
+                        };
                         return (
                           <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#FAFAF9", borderRadius: 10, border: "1px solid #F0EFEE" }}>
                             <div style={{ width: 32, height: 32, borderRadius: 8, background: cfg.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: cfg.color, flexShrink: 0 }}>{(d.name || "?")[0]}</div>
                             <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{d.name}</span>
-                            <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: cfg.bg, color: cfg.color }}>{cfg.label}</span>
+                            <span onClick={nextRole} title="点击切换角色" style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: cfg.bg, color: cfg.color, cursor: "pointer", userSelect: "none" }}>{cfg.label} ↻</span>
                           </div>
                         );
                       }) : (
