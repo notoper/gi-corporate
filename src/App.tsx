@@ -1204,7 +1204,7 @@ export default function SecretaryOS() {
           {/* ── 公司信息 ── */}
           {Section({ title: "公司信息", children: (
             <div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(170px, 1fr))", gap: 8, marginBottom: 8 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8, marginBottom: 8 }}>
                 {/* 公司状态开关 */}
                 <div style={{ background: r.status === "STRIKE OFF" ? "#FEF2F2" : "#F0FDF4", borderRadius: 10, padding: "10px 14px", transition: "background .2s" }}>
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
@@ -1313,7 +1313,21 @@ export default function SecretaryOS() {
               {Field({ label: "护照到期日", fieldKey: "passportExpiry", isDate: true })}
               {Field({ label: "EP证件号", fieldKey: "epNo" })}
               {Field({ label: "EP到期日", fieldKey: "epExpiry", isDate: true })}
-              {Field({ label: "薪水", fieldKey: "salary" })}
+              <div onClick={() => editing !== "salary" && startEdit("salary", r.salary)}
+                style={{ background: "#FAFAF9", borderRadius: 10, padding: "10px 14px", cursor: editing === "salary" ? "default" : "pointer", border: editing === "salary" ? "2px solid #0C0A09" : "2px solid transparent", transition: "border .15s" }}>
+                <div style={{ fontSize: 12, color: "#A8A29E", marginBottom: 3, display: "flex", justifyContent: "space-between" }}>
+                  薪水{editing !== "salary" && <span style={{ fontSize: 11, color: "#D6D3D1" }}>✏️</span>}
+                </div>
+                {editing === "salary" ? (
+                  <input autoFocus value={editVal} onChange={e => setEditVal(e.target.value)}
+                    onKeyDown={e => handleKeyDown(e, "salary")} onBlur={e => doSave("salary", e.target.value)}
+                    style={{ width: "100%", fontSize: 14, fontWeight: 600, padding: "4px 8px", border: "none", borderRadius: 6, outline: "none", background: "#fff", fontFamily: FONT, boxSizing: "border-box" }} />
+                ) : (
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>
+                    {r.salary ? `SGD ${parseFloat(r.salary.replace(/[^0-9.]/g, "")).toLocaleString() || r.salary}` : "—"}
+                  </div>
+                )}
+              </div>
             </div>
           )})}
 
