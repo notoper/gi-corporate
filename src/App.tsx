@@ -560,6 +560,7 @@ export default function SecretaryOS() {
     const list: Array<{ type: string; date: string; person: string; detail: string; company: string; days: number; uen: string }> = [];
     mapped.forEach(r => {
       if (r.status === "STRIKE OFF") return; // Strike Off 公司不提醒
+      if (r.managed === "TRANSFERRED") return; // 已转出公司不提醒
       const items = [
         { type: "EP到期", date: r.epExpiry, person: r.clientName, detail: r.epNo },
         { type: "护照到期", date: r.passportExpiry, person: r.clientName, detail: r.passportNo },
@@ -779,7 +780,8 @@ export default function SecretaryOS() {
         {/* ── 数据中心 ── */}
         {(() => {
           const total = mapped.length;
-          const managedList = mapped.filter(r => r.managed === "YES");
+          const managedList = mapped.filter(r => r.managed === "YES" || r.managed === "MANAGED");
+          const secretaryList = mapped.filter(r => r.managed === "SECRETARY");
           const ndList = mapped.filter(r => r.ndName);
           const addrList = mapped.filter(r => r.addrExpiry);
           const secList = mapped.filter(r => r.secExpiry);
@@ -820,7 +822,8 @@ export default function SecretaryOS() {
               {/* 服务分布 */}
               <div style={{ fontSize: 12, fontWeight: 700, color: "#A8A29E", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>服务分布</div>
               <div style={{ display: "flex", gap: 10, marginBottom: 18 }}>
-                {ServiceCard({ icon: "⚙️", label: "代运营", count: managedList.length, color: "#7C3AED", bg: "#F5F3FF" })}
+                {ServiceCard({ icon: "⚙️", label: "代运营", count: managedList.length, color: "#16A34A", bg: "#F0FDF4" })}
+                {ServiceCard({ icon: "🗂️", label: "秘书服务", count: secretaryList.length, color: "#2563EB", bg: "#EFF6FF" })}
                 {ServiceCard({ icon: "👤", label: "挂名董事", count: ndList.length, color: "#2563EB", bg: "#EFF6FF" })}
                 {ServiceCard({ icon: "🛂", label: "EP 客户", count: epList.length, color: "#0891B2", bg: "#ECFEFF" })}
                 {ServiceCard({ icon: "📍", label: "注册地址", count: addrList.length, color: "#059669", bg: "#F0FDF4" })}
@@ -1225,29 +1228,53 @@ export default function SecretaryOS() {
                 {Field({ label: "FYE", fieldKey: "fye", isDate: true })}
                 {Field({ label: "银行账户", fieldKey: "bank" })}
                 {Field({ label: "RORC", fieldKey: "rorc" })}
-                {/* 代运营 + 运营费 combined cell */}
-                <div style={{ background: r.managed === "YES" ? "#F0FDF4" : "#FEF2F2", borderRadius: 10, padding: "10px 14px", transition: "background .2s" }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-                    <span style={{ fontSize: 12, color: "#A8A29E", fontWeight: 700 }}>代运营</span>
-                    <div onClick={() => {
-                      const updated = { ...r, managed: r.managed === "YES" ? "" : "YES" };
-                      setSelected(updated); setData(prev => prev.map(item => item._id === updated._id ? updated : item));
-                      setDetailSaved(true); setTimeout(() => setDetailSaved(false), 1500);
-                      addLog("修改", r.company, "代运营", r.managed || "否", updated.managed || "否");
-                      void (async () => { try { await supabase.from("companies").update(rowToDb(updated)).eq("id", String(updated._id)); } catch {} })();
-                    }} style={{ width: 36, height: 20, borderRadius: 10, background: r.managed === "YES" ? "#16A34A" : "#D6D3D1", cursor: "pointer", position: "relative", transition: "background .2s", flexShrink: 0 }}>
-                      <div style={{ position: "absolute", top: 2, left: r.managed === "YES" ? 18 : 2, width: 16, height: 16, borderRadius: "50%", background: "#fff", transition: "left .2s", boxShadow: "0 1px 2px rgba(0,0,0,.2)" }} />
+                {/* 服务关系 - 4段选择器，全宽 */}
+                {(() => {
+                  const svcLevel = (r.managed === "YES" || r.managed === "MANAGED") ? "MANAGED"
+                    : r.managed === "SECRETARY" ? "SECRETARY"
+                    : r.managed === "TRANSFERRED" ? "TRANSFERRED"
+                    : "RECORD_ONLY";
+                  const svcOptions = [
+                    { value: "RECORD_ONLY", label: "仅录入",  color: "#78716C", bg: "#F5F5F4", border: "#E7E5E4" },
+                    { value: "SECRETARY",   label: "秘书服务", color: "#2563EB", bg: "#DBEAFE", border: "#BFDBFE" },
+                    { value: "MANAGED",     label: "代运营",  color: "#16A34A", bg: "#BBF7D0", border: "#86EFAC" },
+                    { value: "TRANSFERRED", label: "已转出",  color: "#D97706", bg: "#FDE68A", border: "#FCD34D" },
+                  ];
+                  const blockBg = { RECORD_ONLY: "#FAFAF9", SECRETARY: "#EFF6FF", MANAGED: "#F0FDF4", TRANSFERRED: "#FFF7ED" }[svcLevel];
+                  const showFee = svcLevel === "MANAGED" || svcLevel === "SECRETARY";
+                  return (
+                    <div style={{ background: blockBg, borderRadius: 10, padding: "10px 14px", gridColumn: "1 / -1", transition: "background .2s" }}>
+                      <div style={{ fontSize: 12, color: "#A8A29E", fontWeight: 700, marginBottom: 8 }}>服务关系</div>
+                      <div style={{ display: "flex", gap: 6, marginBottom: showFee ? 10 : 0 }}>
+                        {svcOptions.map(opt => (
+                          <div key={opt.value} onClick={() => {
+                            const updated = { ...r, managed: opt.value };
+                            setSelected(updated); setData(prev => prev.map(item => item._id === updated._id ? updated : item));
+                            setDetailSaved(true); setTimeout(() => setDetailSaved(false), 1500);
+                            addLog("修改", r.company, "服务关系", r.managed || "RECORD_ONLY", opt.value);
+                            void (async () => { try { await supabase.from("companies").update(rowToDb(updated)).eq("id", String(updated._id)); } catch {} })();
+                          }} style={{
+                            flex: 1, textAlign: "center", padding: "7px 4px", borderRadius: 8,
+                            fontSize: 13, fontWeight: 600, cursor: "pointer", transition: "all .15s",
+                            background: svcLevel === opt.value ? opt.bg : "#fff",
+                            color: svcLevel === opt.value ? opt.color : "#A8A29E",
+                            border: `1.5px solid ${svcLevel === opt.value ? opt.border : "#F0EFEE"}`,
+                          }}>{opt.label}</div>
+                        ))}
+                      </div>
+                      {showFee && (
+                        <div style={{ borderTop: "1px solid #E7E5E4", paddingTop: 8 }}>
+                          <div style={{ fontSize: 12, color: "#A8A29E", marginBottom: 3, display: "flex", justifyContent: "space-between" }}>运营费/月{editing !== "opsFee" && <span style={{ fontSize: 11, color: "#D6D3D1" }}>✏️</span>}</div>
+                          {editing === "opsFee" ? (
+                            <input autoFocus value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => handleKeyDown(e, "opsFee")} onBlur={e => doSave("opsFee", e.target.value)} style={{ width: "100%", fontSize: 14, fontWeight: 600, padding: "4px 8px", border: "none", borderRadius: 6, outline: "none", background: "#fff", fontFamily: FONT, boxSizing: "border-box" }} />
+                          ) : (
+                            <div onClick={() => startEdit("opsFee", r.opsFee)} style={{ fontSize: 14, fontWeight: 600, cursor: "pointer", minHeight: 20 }}>{r.opsFee || "—"}</div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                  <div style={{ borderTop: "1px solid #E7E5E4", paddingTop: 8 }}>
-                    <div style={{ fontSize: 12, color: "#A8A29E", marginBottom: 3, display: "flex", justifyContent: "space-between" }}>运营费/月{editing !== "opsFee" && <span style={{ fontSize: 11, color: "#D6D3D1" }}>✏️</span>}</div>
-                    {editing === "opsFee" ? (
-                      <input autoFocus value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => handleKeyDown(e, "opsFee")} onBlur={e => doSave("opsFee", e.target.value)} style={{ width: "100%", fontSize: 14, fontWeight: 600, padding: "4px 8px", border: "none", borderRadius: 6, outline: "none", background: "#fff", fontFamily: FONT, boxSizing: "border-box" }} />
-                    ) : (
-                      <div onClick={() => startEdit("opsFee", r.opsFee)} style={{ fontSize: 14, fontWeight: 600, cursor: "pointer", minHeight: 20 }}>{r.opsFee || "—"}</div>
-                    )}
-                  </div>
-                </div>
+                  );
+                })()}
               </div>
               {/* 注册地址 - 长条 */}
               {Field({ label: "注册地址", fieldKey: "address" })}
