@@ -1277,7 +1277,9 @@ export default function SecretaryOS() {
                           {editing === "opsFee" ? (
                             <input autoFocus value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => handleKeyDown(e, "opsFee")} onBlur={e => doSave("opsFee", e.target.value)} style={{ width: "100%", fontSize: 14, fontWeight: 600, padding: "4px 8px", border: "none", borderRadius: 6, outline: "none", background: "#fff", fontFamily: FONT, boxSizing: "border-box" }} />
                           ) : (
-                            <div onClick={() => startEdit("opsFee", r.opsFee)} style={{ fontSize: 14, fontWeight: 600, cursor: "pointer", minHeight: 20 }}>{r.opsFee || "—"}</div>
+                            <div onClick={() => startEdit("opsFee", r.opsFee)} style={{ fontSize: 14, fontWeight: 600, cursor: "pointer", minHeight: 20 }}>
+                              {r.opsFee ? `SGD ${parseFloat(r.opsFee.replace(/[^0-9.]/g, "")).toLocaleString() || r.opsFee}` : "—"}
+                            </div>
                           )}
                         </div>
                       )}
