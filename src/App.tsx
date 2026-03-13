@@ -330,6 +330,9 @@ export default function SecretaryOS() {
   const [personnelRescanError, setPersonnelRescanError] = useState("");
   const [strikeOffModal, setStrikeOffModal] = useState(false);
   const [strikeOffDateInput, setStrikeOffDateInput] = useState("");
+  const [editingPerson, setEditingPerson] = useState<{key: string; val: string} | null>(null);
+  const [addPersonMode, setAddPersonMode] = useState<"director" | "shareholder" | null>(null);
+  const [addPersonForm, setAddPersonForm] = useState({ name: "", role: "director", shares: "" });
 
   const FIELD_LABELS: Record<string, string> = {
     company: "公司名称", uen: "UEN", type: "公司类型", status: "状态",
@@ -1442,82 +1445,139 @@ export default function SecretaryOS() {
               </div>
             );
 
-            const hasData = directors.length > 0 || shareholders.length > 0 || r.ndName || r.secName;
-            if (!hasData) return (
-              <div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>{rescanBtn}</div>
-                <div style={{ padding: "12px 0", fontSize: 13, color: "#A8A29E", textAlign: "center" }}>暂无人员信息 · 通过上传 BizFile 自动填充</div>
-              </div>
-            );
+            const savePersonnel = (newDirs: typeof directors, newShs: typeof shareholders) => {
+              const updated = { ...r, directorsJson: JSON.stringify(newDirs), shareholdersJson: JSON.stringify(newShs) };
+              setSelected(updated); setData(prev => prev.map(item => item._id === updated._id ? updated : item));
+              void (async () => { try { await supabase.from("companies").update(rowToDb(updated)).eq("id", String(updated._id)); } catch {} })();
+            };
+
+            const inputStyle: React.CSSProperties = { border: "none", outline: "none", background: "transparent", padding: "2px 0", fontFamily: FONT, width: "100%" };
+
             return (
               <div>
                 <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10 }}>{rescanBtn}</div>
-                {/* Directors / Officers */}
-                {(directors.length > 0 || r.ndName || r.secName) && (
-                  <div style={{ marginBottom: 16 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#A8A29E", textTransform: "uppercase", marginBottom: 8 }}>董事 / 秘书</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      {directors.length > 0 ? directors.map((d, i) => {
-                        const cfg = roleLabel[d.role] || { label: d.role, color: "#78716C", bg: "#F5F5F4" };
-                        const roleOrder = ["director", "nominal", "client", "secretary"];
-                        const nextRole = () => {
-                          const idx = roleOrder.indexOf(d.role);
-                          const next = roleOrder[(idx + 1) % roleOrder.length];
-                          const newDirs = directors.map((x, j) => j === i ? { ...x, role: next } : x);
-                          const updated = { ...r, directorsJson: JSON.stringify(newDirs) };
-                          setSelected(updated); setData(prev => prev.map(item => item._id === updated._id ? updated : item));
-                          void (async () => { try { await supabase.from("companies").update(rowToDb(updated)).eq("id", String(updated._id)); } catch {} })();
-                        };
-                        return (
-                          <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#FAFAF9", borderRadius: 10, border: "1px solid #F0EFEE" }}>
-                            <div style={{ width: 32, height: 32, borderRadius: 8, background: cfg.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: cfg.color, flexShrink: 0 }}>{(d.name || "?")[0]}</div>
-                            <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{d.name}</span>
-                            <span onClick={nextRole} title="点击切换角色" style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: cfg.bg, color: cfg.color, cursor: "pointer", userSelect: "none" }}>{cfg.label} ↻</span>
+
+                {/* ── 董事 / 秘书 ── */}
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#A8A29E", textTransform: "uppercase", marginBottom: 8 }}>董事 / 秘书</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {directors.map((d, i) => {
+                      const cfg = roleLabel[d.role] || { label: d.role, color: "#78716C", bg: "#F5F5F4" };
+                      const roleOrder = ["director", "nominal", "client", "secretary"];
+                      const isEditingName = editingPerson?.key === `dir-${i}`;
+                      return (
+                        <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#FAFAF9", borderRadius: 10, border: "1px solid #F0EFEE" }}>
+                          <div style={{ width: 32, height: 32, borderRadius: 8, background: cfg.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: cfg.color, flexShrink: 0 }}>
+                            {(isEditingName ? editingPerson!.val : d.name || "?")[0]?.toUpperCase() || "?"}
                           </div>
-                        );
-                      }) : (
-                        <>
-                          {r.ndName && <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#FAFAF9", borderRadius: 10 }}>
-                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "#DBEAFE", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#2563EB", flexShrink: 0 }}>{r.ndName[0]}</div>
-                            <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{r.ndName}</span>
-                            <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "#DBEAFE", color: "#2563EB" }}>挂名董事</span>
-                          </div>}
-                          {r.secName && <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px", background: "#FAFAF9", borderRadius: 10 }}>
-                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "#FEF3C7", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#D97706", flexShrink: 0 }}>{r.secName[0]}</div>
-                            <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{r.secName}</span>
-                            <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "#FEF3C7", color: "#D97706" }}>秘书</span>
-                          </div>}
-                        </>
-                      )}
-                    </div>
-                    {ChangeLogList({ logs: directorLogs })}
+                          {isEditingName ? (
+                            <input autoFocus value={editingPerson!.val} onChange={e => setEditingPerson({ key: `dir-${i}`, val: e.target.value })}
+                              onBlur={() => { const name = editingPerson!.val.trim().toUpperCase(); if (name) savePersonnel(directors.map((x, j) => j === i ? { ...x, name } : x), shareholders); setEditingPerson(null); }}
+                              onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditingPerson(null); }}
+                              style={{ ...inputStyle, flex: 1, fontSize: 14, fontWeight: 600 }} />
+                          ) : (
+                            <span onClick={() => setEditingPerson({ key: `dir-${i}`, val: d.name })} style={{ flex: 1, fontSize: 14, fontWeight: 600, cursor: "text" }}>{d.name}</span>
+                          )}
+                          <span onClick={() => { const idx = roleOrder.indexOf(d.role); const next = roleOrder[(idx + 1) % roleOrder.length]; savePersonnel(directors.map((x, j) => j === i ? { ...x, role: next } : x), shareholders); }}
+                            title="点击切换角色" style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: cfg.bg, color: cfg.color, cursor: "pointer", userSelect: "none", flexShrink: 0 }}>{cfg.label} ↻</span>
+                          <span onClick={() => savePersonnel(directors.filter((_, j) => j !== i), shareholders)}
+                            title="删除" style={{ fontSize: 18, color: "#D6D3D1", cursor: "pointer", lineHeight: 1, flexShrink: 0, paddingLeft: 4 }}>×</span>
+                        </div>
+                      );
+                    })}
+                    {addPersonMode === "director" && (
+                      <div style={{ display: "flex", gap: 8, padding: "10px 14px", background: "#F8FAFF", borderRadius: 10, border: "1.5px solid #BFDBFE", alignItems: "center" }}>
+                        <input autoFocus placeholder="输入姓名" value={addPersonForm.name}
+                          onChange={e => setAddPersonForm(p => ({ ...p, name: e.target.value }))}
+                          onKeyDown={e => e.key === "Escape" && setAddPersonMode(null)}
+                          style={{ ...inputStyle, flex: 1, fontSize: 14, fontWeight: 600 }} />
+                        <select value={addPersonForm.role} onChange={e => setAddPersonForm(p => ({ ...p, role: e.target.value }))}
+                          style={{ fontSize: 12, border: "1px solid #E7E5E4", borderRadius: 6, padding: "4px 6px", fontFamily: FONT, background: "#fff", flexShrink: 0 }}>
+                          <option value="director">董事</option>
+                          <option value="nominal">挂名董事</option>
+                          <option value="client">客户</option>
+                          <option value="secretary">秘书</option>
+                        </select>
+                        <button onClick={() => { if (!addPersonForm.name.trim()) return; savePersonnel([...directors, { name: addPersonForm.name.trim().toUpperCase(), role: addPersonForm.role }], shareholders); setAddPersonMode(null); setAddPersonForm(p => ({ ...p, name: "", role: "director" })); }}
+                          style={{ padding: "5px 12px", borderRadius: 6, background: "#0C0A09", color: "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>✓</button>
+                        <button onClick={() => setAddPersonMode(null)}
+                          style={{ padding: "5px 10px", borderRadius: 6, background: "#F5F5F4", border: "none", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>✕</button>
+                      </div>
+                    )}
+                    <button onClick={() => { setAddPersonMode("director"); setAddPersonForm(p => ({ ...p, name: "", role: "director" })); }}
+                      style={{ padding: "7px", borderRadius: 8, border: "1.5px dashed #D6D3D1", background: "transparent", cursor: "pointer", fontSize: 13, color: "#A8A29E", fontWeight: 600, width: "100%" }}>
+                      ＋ 添加董事 / 秘书
+                    </button>
                   </div>
-                )}
-                {/* Shareholders */}
-                {shareholders.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "#A8A29E", textTransform: "uppercase", marginBottom: 8 }}>股东</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                      {shareholders.map((s, i) => {
-                        const total = shareholders.reduce((sum, x) => sum + (x.shares || 0), 0);
-                        const pct = total > 0 ? Math.round(s.shares / total * 100) : 0;
-                        return (
-                          <div key={i} style={{ padding: "10px 14px", background: "#FAFAF9", borderRadius: 10, border: "1px solid #F0EFEE" }}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                              <div style={{ width: 32, height: 32, borderRadius: 8, background: "#F3E8FF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#7C3AED", flexShrink: 0 }}>{(s.name || "?")[0]}</div>
-                              <div style={{ flex: 1 }}>
-                                <div style={{ fontSize: 14, fontWeight: 600 }}>{s.name}</div>
-                                <div style={{ fontSize: 12, color: "#78716C", marginTop: 2 }}>{s.shares?.toLocaleString()} 股 {s.shareType} · {s.currency}</div>
-                              </div>
-                              <div style={{ textAlign: "right" }}>
-                                <div style={{ fontSize: 16, fontWeight: 800, color: "#7C3AED" }}>{pct}%</div>
-                                <div style={{ fontSize: 11, color: "#A8A29E" }}>持股</div>
-                              </div>
+                  {ChangeLogList({ logs: directorLogs })}
+                </div>
+
+                {/* ── 股东 ── */}
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: "#A8A29E", textTransform: "uppercase", marginBottom: 8 }}>股东</div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {shareholders.map((s, i) => {
+                      const total = shareholders.reduce((sum, x) => sum + (x.shares || 0), 0);
+                      const pct = total > 0 ? Math.round(s.shares / total * 100) : 0;
+                      const isEditingName = editingPerson?.key === `sh-${i}-name`;
+                      const isEditingShares = editingPerson?.key === `sh-${i}-shares`;
+                      return (
+                        <div key={i} style={{ padding: "10px 14px", background: "#FAFAF9", borderRadius: 10, border: "1px solid #F0EFEE" }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div style={{ width: 32, height: 32, borderRadius: 8, background: "#F3E8FF", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: "#7C3AED", flexShrink: 0 }}>
+                              {(isEditingName ? editingPerson!.val : s.name || "?")[0]?.toUpperCase() || "?"}
                             </div>
+                            <div style={{ flex: 1 }}>
+                              {isEditingName ? (
+                                <input autoFocus value={editingPerson!.val} onChange={e => setEditingPerson({ key: `sh-${i}-name`, val: e.target.value })}
+                                  onBlur={() => { const name = editingPerson!.val.trim().toUpperCase(); if (name) savePersonnel(directors, shareholders.map((x, j) => j === i ? { ...x, name } : x)); setEditingPerson(null); }}
+                                  onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditingPerson(null); }}
+                                  style={{ ...inputStyle, fontSize: 14, fontWeight: 600 }} />
+                              ) : (
+                                <div onClick={() => setEditingPerson({ key: `sh-${i}-name`, val: s.name })} style={{ fontSize: 14, fontWeight: 600, cursor: "text" }}>{s.name}</div>
+                              )}
+                              {isEditingShares ? (
+                                <input autoFocus value={editingPerson!.val} onChange={e => setEditingPerson({ key: `sh-${i}-shares`, val: e.target.value })}
+                                  onBlur={() => { const shares = parseInt(editingPerson!.val.replace(/[^0-9]/g, "")) || 0; savePersonnel(directors, shareholders.map((x, j) => j === i ? { ...x, shares } : x)); setEditingPerson(null); }}
+                                  onKeyDown={e => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditingPerson(null); }}
+                                  style={{ ...inputStyle, fontSize: 12, color: "#78716C", marginTop: 2 }} />
+                              ) : (
+                                <div onClick={() => setEditingPerson({ key: `sh-${i}-shares`, val: String(s.shares || "") })} style={{ fontSize: 12, color: "#78716C", marginTop: 2, cursor: "text" }}>
+                                  {s.shares?.toLocaleString()} 股 {s.shareType} · {s.currency}
+                                </div>
+                              )}
+                            </div>
+                            <div style={{ textAlign: "right" }}>
+                              <div style={{ fontSize: 16, fontWeight: 800, color: "#7C3AED" }}>{pct}%</div>
+                              <div style={{ fontSize: 11, color: "#A8A29E" }}>持股</div>
+                            </div>
+                            <span onClick={() => savePersonnel(directors, shareholders.filter((_, j) => j !== i))}
+                              title="删除" style={{ fontSize: 18, color: "#D6D3D1", cursor: "pointer", lineHeight: 1, flexShrink: 0, paddingLeft: 4 }}>×</span>
                           </div>
-                        );
-                      })}
-                    </div>
+                        </div>
+                      );
+                    })}
+                    {addPersonMode === "shareholder" && (
+                      <div style={{ display: "flex", gap: 8, padding: "10px 14px", background: "#F8F5FF", borderRadius: 10, border: "1.5px solid #DDD6FE", alignItems: "center" }}>
+                        <input autoFocus placeholder="股东姓名" value={addPersonForm.name}
+                          onChange={e => setAddPersonForm(p => ({ ...p, name: e.target.value }))}
+                          onKeyDown={e => e.key === "Escape" && setAddPersonMode(null)}
+                          style={{ ...inputStyle, flex: 2, minWidth: 100, fontSize: 14, fontWeight: 600 }} />
+                        <input placeholder="股数" value={addPersonForm.shares}
+                          onChange={e => setAddPersonForm(p => ({ ...p, shares: e.target.value }))}
+                          onKeyDown={e => e.key === "Escape" && setAddPersonMode(null)}
+                          style={{ ...inputStyle, flex: 1, minWidth: 60, fontSize: 14 }} />
+                        <button onClick={() => { if (!addPersonForm.name.trim() || !addPersonForm.shares) return; savePersonnel(directors, [...shareholders, { name: addPersonForm.name.trim().toUpperCase(), shares: parseInt(addPersonForm.shares.replace(/[^0-9]/g, "")) || 0, shareType: "ORDINARY", currency: "SINGAPORE DOLLAR" }]); setAddPersonMode(null); setAddPersonForm(p => ({ ...p, name: "", shares: "" })); }}
+                          style={{ padding: "5px 12px", borderRadius: 6, background: "#0C0A09", color: "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700, flexShrink: 0 }}>✓</button>
+                        <button onClick={() => setAddPersonMode(null)}
+                          style={{ padding: "5px 10px", borderRadius: 6, background: "#F5F5F4", border: "none", cursor: "pointer", fontSize: 13, flexShrink: 0 }}>✕</button>
+                      </div>
+                    )}
+                    <button onClick={() => { setAddPersonMode("shareholder"); setAddPersonForm(p => ({ ...p, name: "", shares: "" })); }}
+                      style={{ padding: "7px", borderRadius: 8, border: "1.5px dashed #D6D3D1", background: "transparent", cursor: "pointer", fontSize: 13, color: "#A8A29E", fontWeight: 600, width: "100%" }}>
+                      ＋ 添加股东
+                    </button>
+                  </div>
                     {/* 注册资本三格 */}
                     {(() => {
                       const parseAmt = (s: string) => parseFloat(s.replace(/[^0-9.]/g, "")) || 0;
@@ -1566,7 +1626,6 @@ export default function SecretaryOS() {
                     })()}
                     {ChangeLogList({ logs: shareholderLogs })}
                   </div>
-                )}
               </div>
             );
           })()})}
