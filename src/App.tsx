@@ -95,6 +95,7 @@ const mapRow = (row: Record<string, string>) => {
     personnelChangeLogs: "[]",
     strikeOffDate: "",
     transferredDate: "",
+    salary: "",
   };
 };
 
@@ -152,6 +153,7 @@ const dbToRow = (db: any): CompanyRow => ({
   personnelChangeLogs: db.personnel_change_logs || "[]",
   strikeOffDate: db.strike_off_date || "",
   transferredDate: db.transferred_date || "",
+  salary: db.salary || "",
 });
 
 const rowToDb = (row: CompanyRow) => ({
@@ -204,6 +206,7 @@ const rowToDb = (row: CompanyRow) => ({
   personnel_change_logs: row.personnelChangeLogs || "[]",
   strike_off_date: row.strikeOffDate || "",
   transferred_date: row.transferredDate || "",
+  salary: row.salary || "",
 });
 
 type LogEntry = { id: number; time: string; action: string; company: string; field: string; oldVal: string; newVal: string };
@@ -506,7 +509,7 @@ export default function SecretaryOS() {
       customTodos: "", previousNames: "",
       managed: "", managedExpiry: "", managedStart: "",
       epStart: "", ndStart: "", secStart: "", addrStart: "",
-      paidCapital: "", rorc: "", personnelChangeLogs: "[]", strikeOffDate: "", transferredDate: "",
+      paidCapital: "", rorc: "", personnelChangeLogs: "[]", strikeOffDate: "", transferredDate: "", salary: "",
       directorsJson, shareholdersJson, registeredCapital,
     };
     setData(prev => [...prev, record]);
@@ -1310,6 +1313,7 @@ export default function SecretaryOS() {
               {Field({ label: "护照到期日", fieldKey: "passportExpiry", isDate: true })}
               {Field({ label: "EP证件号", fieldKey: "epNo" })}
               {Field({ label: "EP到期日", fieldKey: "epExpiry", isDate: true })}
+              {Field({ label: "薪水", fieldKey: "salary" })}
             </div>
           )})}
 
