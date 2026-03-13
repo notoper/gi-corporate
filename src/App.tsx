@@ -94,6 +94,7 @@ const mapRow = (row: Record<string, string>) => {
     rorc: "",
     personnelChangeLogs: "[]",
     strikeOffDate: "",
+    transferredDate: "",
   };
 };
 
@@ -150,6 +151,7 @@ const dbToRow = (db: any): CompanyRow => ({
   rorc: db.rorc || "",
   personnelChangeLogs: db.personnel_change_logs || "[]",
   strikeOffDate: db.strike_off_date || "",
+  transferredDate: db.transferred_date || "",
 });
 
 const rowToDb = (row: CompanyRow) => ({
@@ -201,6 +203,7 @@ const rowToDb = (row: CompanyRow) => ({
   rorc: row.rorc || "",
   personnel_change_logs: row.personnelChangeLogs || "[]",
   strike_off_date: row.strikeOffDate || "",
+  transferred_date: row.transferredDate || "",
 });
 
 type LogEntry = { id: number; time: string; action: string; company: string; field: string; oldVal: string; newVal: string };
@@ -500,7 +503,7 @@ export default function SecretaryOS() {
       customTodos: "", previousNames: "",
       managed: "", managedExpiry: "", managedStart: "",
       epStart: "", ndStart: "", secStart: "", addrStart: "",
-      paidCapital: "", rorc: "", personnelChangeLogs: "[]", strikeOffDate: "",
+      paidCapital: "", rorc: "", personnelChangeLogs: "[]", strikeOffDate: "", transferredDate: "",
       directorsJson, shareholdersJson, registeredCapital,
     };
     setData(prev => [...prev, record]);
@@ -1269,6 +1272,20 @@ export default function SecretaryOS() {
                             <input autoFocus value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => handleKeyDown(e, "opsFee")} onBlur={e => doSave("opsFee", e.target.value)} style={{ width: "100%", fontSize: 14, fontWeight: 600, padding: "4px 8px", border: "none", borderRadius: 6, outline: "none", background: "#fff", fontFamily: FONT, boxSizing: "border-box" }} />
                           ) : (
                             <div onClick={() => startEdit("opsFee", r.opsFee)} style={{ fontSize: 14, fontWeight: 600, cursor: "pointer", minHeight: 20 }}>{r.opsFee || "—"}</div>
+                          )}
+                        </div>
+                      )}
+                      {svcLevel === "TRANSFERRED" && (
+                        <div style={{ borderTop: "1px solid #FCD34D", paddingTop: 8, marginTop: 8 }}>
+                          <div style={{ fontSize: 12, color: "#D97706", marginBottom: 3, display: "flex", justifyContent: "space-between", fontWeight: 700 }}>
+                            转出日期{editing !== "transferredDate" && <span style={{ fontSize: 11, color: "#FCD34D" }}>✏️</span>}
+                          </div>
+                          {editing === "transferredDate" ? (
+                            <input autoFocus type="date" value={editVal} onChange={e => setEditVal(e.target.value)} onKeyDown={e => handleKeyDown(e, "transferredDate")} onBlur={e => doSave("transferredDate", e.target.value)} style={{ width: "100%", fontSize: 14, fontWeight: 600, padding: "4px 8px", border: "none", borderRadius: 6, outline: "none", background: "#fff", fontFamily: FONT, boxSizing: "border-box" }} />
+                          ) : (
+                            <div onClick={() => startEdit("transferredDate", r.transferredDate)} style={{ fontSize: 14, fontWeight: 600, color: "#D97706", cursor: "pointer", minHeight: 20 }}>
+                              {r.transferredDate ? formatDateDisplay(r.transferredDate) : <span style={{ color: "#FCD34D", fontWeight: 400 }}>点击填写（选填）</span>}
+                            </div>
                           )}
                         </div>
                       )}
