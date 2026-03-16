@@ -328,14 +328,8 @@ export default function SecretaryOS() {
   const importRef = useRef<HTMLTextAreaElement>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [detailSaved, setDetailSaved] = useState(false);
-  const [personnelRescanning, setPersonnelRescanning] = useState(false);
-  const [personnelRescanError, setPersonnelRescanError] = useState("");
   const [strikeOffModal, setStrikeOffModal] = useState(false);
   const [strikeOffDateInput, setStrikeOffDateInput] = useState("");
-  const [editingPerson, setEditingPerson] = useState<{key: string; val: string} | null>(null);
-  const [addPersonMode, setAddPersonMode] = useState<"director" | "shareholder" | null>(null);
-  const [addPersonForm, setAddPersonForm] = useState({ name: "", role: "director", shares: "" });
 
   const FIELD_LABELS: Record<string, string> = {
     company: "公司名称", uen: "UEN", type: "公司类型", status: "状态",
@@ -951,6 +945,12 @@ export default function SecretaryOS() {
     const [editingCompany, setEditingCompany] = useState(false);
     const [newCompanyName, setNewCompanyName] = useState("");
     const [confirmingRename, setConfirmingRename] = useState(false);
+    const [detailSaved, setDetailSaved] = useState(false);
+    const [personnelRescanning, setPersonnelRescanning] = useState(false);
+    const [personnelRescanError, setPersonnelRescanError] = useState("");
+    const [editingPerson, setEditingPerson] = useState<{key: string; val: string} | null>(null);
+    const [addPersonMode, setAddPersonMode] = useState<"director" | "shareholder" | null>(null);
+    const [addPersonForm, setAddPersonForm] = useState({ name: "", role: "director", shares: "" });
 
     let previousNames: string[] = [];
     try { previousNames = JSON.parse(r.previousNames || "[]"); } catch { previousNames = []; }
