@@ -328,6 +328,7 @@ export default function SecretaryOS() {
   const importRef = useRef<HTMLTextAreaElement>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [detailSaved, setDetailSaved] = useState(false);
   const [strikeOffModal, setStrikeOffModal] = useState(false);
   const [strikeOffDateInput, setStrikeOffDateInput] = useState("");
 
@@ -945,7 +946,6 @@ export default function SecretaryOS() {
     const [editingCompany, setEditingCompany] = useState(false);
     const [newCompanyName, setNewCompanyName] = useState("");
     const [confirmingRename, setConfirmingRename] = useState(false);
-    const [detailSaved, setDetailSaved] = useState(false);
     const [personnelRescanning, setPersonnelRescanning] = useState(false);
     const [personnelRescanError, setPersonnelRescanError] = useState("");
     const [editingPerson, setEditingPerson] = useState<{key: string; val: string} | null>(null);
