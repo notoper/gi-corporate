@@ -99,6 +99,7 @@ const mapRow = (row: Record<string, string>) => {
     dob: "",
     epIssueDate: "",
     epRenewDate: "",
+    dependantsJson: "[]",
   };
 };
 
@@ -160,6 +161,7 @@ const dbToRow = (db: any): CompanyRow => ({
   dob: db.dob || "",
   epIssueDate: db.ep_issue_date || "",
   epRenewDate: db.ep_renew_date || "",
+  dependantsJson: db.dependants_json || "[]",
 });
 
 const rowToDb = (row: CompanyRow) => ({
@@ -216,6 +218,7 @@ const rowToDb = (row: CompanyRow) => ({
   dob: row.dob || "",
   ep_issue_date: row.epIssueDate || "",
   ep_renew_date: row.epRenewDate || "",
+  dependants_json: row.dependantsJson || "[]",
 });
 
 type LogEntry = { id: number; time: string; action: string; company: string; field: string; oldVal: string; newVal: string };
@@ -244,6 +247,9 @@ const formatDateDisplay = (ds: string): string => {
   if (isNaN(d.getTime())) return ds;
   return `${String(d.getDate()).padStart(2, "0")} ${MONTHS_SHORT[d.getMonth()]} ${d.getFullYear()}`;
 };
+
+// ─── Dependant (DP / LTVP) ───
+interface Dependant { name: string; dob: string; type: "DP" | "LTVP"; permitNo: string; issueDate: string; gender: "M" | "F" | ""; }
 
 // ─── BizFile PDF Parser ───
 interface BizFileShareholder { name: string; shares: number; currency: string; shareType: string; }
@@ -514,7 +520,7 @@ export default function SecretaryOS() {
       managed: "", managedExpiry: "", managedStart: "",
       epStart: "", ndStart: "", secStart: "", addrStart: "",
       paidCapital: "", rorc: "", personnelChangeLogs: "[]", strikeOffDate: "", transferredDate: "", salary: "",
-      dob: "", epIssueDate: "", epRenewDate: "",
+      dob: "", epIssueDate: "", epRenewDate: "", dependantsJson: "[]",
       directorsJson, shareholdersJson, registeredCapital,
     };
     setData(prev => [...prev, record]);
@@ -959,8 +965,9 @@ export default function SecretaryOS() {
     const [personnelRescanning, setPersonnelRescanning] = useState(false);
     const [personnelRescanError, setPersonnelRescanError] = useState("");
     const [editingPerson, setEditingPerson] = useState<{key: string; val: string} | null>(null);
-    const [addPersonMode, setAddPersonMode] = useState<"director" | "shareholder" | null>(null);
+    const [addPersonMode, setAddPersonMode] = useState<"director" | "shareholder" | "dependant" | null>(null);
     const [addPersonForm, setAddPersonForm] = useState({ name: "", role: "director", shares: "" });
+    const [addDepForm, setAddDepForm] = useState<Dependant>({ name: "", dob: "", type: "DP", permitNo: "", issueDate: "", gender: "" });
 
     let previousNames: string[] = [];
     try { previousNames = JSON.parse(r.previousNames || "[]"); } catch { previousNames = []; }
@@ -1345,6 +1352,105 @@ export default function SecretaryOS() {
               {Field({ label: "EP Renew日期", fieldKey: "epRenewDate", isDate: true })}
             </div>
           )})}
+
+          {/* ── 关联人员 (DP / LTVP) ── */}
+          {Section({ title: "关联人员 (DP / LTVP)", children: (() => {
+            let dependants: Dependant[] = [];
+            try { dependants = JSON.parse(r.dependantsJson || "[]"); } catch { dependants = []; }
+
+            const saveDependants = (list: Dependant[]) => {
+              const updated = { ...r, dependantsJson: JSON.stringify(list) };
+              setSelected(updated);
+              setData(prev => prev.map(item => item._id === updated._id ? updated : item));
+              void (async () => { try { await supabase.from("companies").update(rowToDb(updated)).eq("id", String(updated._id)); } catch {} })();
+            };
+
+            const typeStyle: Record<string, { color: string; bg: string }> = {
+              DP:   { color: "#2563EB", bg: "#DBEAFE" },
+              LTVP: { color: "#D97706", bg: "#FEF3C7" },
+            };
+            const inputSm: React.CSSProperties = { border: "1px solid #E7E5E4", borderRadius: 6, padding: "4px 8px", fontSize: 12, fontFamily: FONT, background: "#fff", outline: "none" };
+
+            return (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {dependants.map((dep, i) => {
+                  const tc = typeStyle[dep.type] || typeStyle.DP;
+                  return (
+                    <div key={i} style={{ padding: "10px 14px", background: "#FAFAF9", borderRadius: 10, border: "1px solid #F0EFEE" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{ width: 32, height: 32, borderRadius: 8, background: tc.bg, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: tc.color, flexShrink: 0 }}>
+                          {dep.name?.[0]?.toUpperCase() || "?"}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 14, fontWeight: 600 }}>{dep.name || "—"}</div>
+                          <div style={{ fontSize: 12, color: "#78716C", marginTop: 2, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                            {dep.gender && <span>{dep.gender === "M" ? "男" : "女"}</span>}
+                            {dep.dob && <span>生日 {dep.dob}</span>}
+                            {dep.permitNo && <span>准证 {dep.permitNo}</span>}
+                            {dep.issueDate && <span>Issue {dep.issueDate}</span>}
+                          </div>
+                        </div>
+                        <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 700, background: tc.bg, color: tc.color, flexShrink: 0 }}>{dep.type}</span>
+                        <span onClick={() => saveDependants(dependants.filter((_, j) => j !== i))}
+                          title="删除" style={{ fontSize: 18, color: "#D6D3D1", cursor: "pointer", lineHeight: 1, flexShrink: 0, paddingLeft: 4 }}>×</span>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {addPersonMode === "dependant" && (
+                  <div style={{ padding: "12px 14px", background: "#F8FAFF", borderRadius: 10, border: "1.5px solid #BFDBFE", display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <input autoFocus placeholder="姓名" value={addDepForm.name}
+                        onChange={e => setAddDepForm(p => ({ ...p, name: e.target.value }))}
+                        onKeyDown={e => e.key === "Escape" && setAddPersonMode(null)}
+                        style={{ ...inputSm, flex: 2, minWidth: 120 }} />
+                      <select value={addDepForm.gender} onChange={e => setAddDepForm(p => ({ ...p, gender: e.target.value as "M" | "F" | "" }))}
+                        style={{ ...inputSm, flexShrink: 0 }}>
+                        <option value="">性别</option>
+                        <option value="M">男</option>
+                        <option value="F">女</option>
+                      </select>
+                      <select value={addDepForm.type} onChange={e => setAddDepForm(p => ({ ...p, type: e.target.value as "DP" | "LTVP" }))}
+                        style={{ ...inputSm, flexShrink: 0 }}>
+                        <option value="DP">DP</option>
+                        <option value="LTVP">LTVP</option>
+                      </select>
+                    </div>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <input placeholder="出生日期 (如 01 JAN 1990)" value={addDepForm.dob}
+                        onChange={e => setAddDepForm(p => ({ ...p, dob: e.target.value }))}
+                        onKeyDown={e => e.key === "Escape" && setAddPersonMode(null)}
+                        style={{ ...inputSm, flex: 1, minWidth: 160 }} />
+                      <input placeholder="准证号码" value={addDepForm.permitNo}
+                        onChange={e => setAddDepForm(p => ({ ...p, permitNo: e.target.value }))}
+                        onKeyDown={e => e.key === "Escape" && setAddPersonMode(null)}
+                        style={{ ...inputSm, flex: 1, minWidth: 120 }} />
+                      <input placeholder="Issue 日期" value={addDepForm.issueDate}
+                        onChange={e => setAddDepForm(p => ({ ...p, issueDate: e.target.value }))}
+                        onKeyDown={e => e.key === "Escape" && setAddPersonMode(null)}
+                        style={{ ...inputSm, flex: 1, minWidth: 120 }} />
+                    </div>
+                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                      <button onClick={() => {
+                        if (!addDepForm.name.trim()) return;
+                        saveDependants([...dependants, { ...addDepForm, name: addDepForm.name.trim().toUpperCase() }]);
+                        setAddPersonMode(null);
+                        setAddDepForm({ name: "", dob: "", type: "DP", permitNo: "", issueDate: "", gender: "" });
+                      }} style={{ padding: "5px 14px", borderRadius: 6, background: "#0C0A09", color: "#fff", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>确认添加</button>
+                      <button onClick={() => setAddPersonMode(null)}
+                        style={{ padding: "5px 10px", borderRadius: 6, background: "#F5F5F4", border: "none", cursor: "pointer", fontSize: 13 }}>取消</button>
+                    </div>
+                  </div>
+                )}
+
+                <button onClick={() => { setAddPersonMode("dependant"); setAddDepForm({ name: "", dob: "", type: "DP", permitNo: "", issueDate: "", gender: "" }); }}
+                  style={{ padding: "7px", borderRadius: 8, border: "1.5px dashed #D6D3D1", background: "transparent", cursor: "pointer", fontSize: 13, color: "#A8A29E", fontWeight: 600, width: "100%" }}>
+                  ＋ 添加关联人员
+                </button>
+              </div>
+            );
+          })()})}
 
           {/* ── 到期提醒 ── */}
           {Section({ title: "到期提醒", children: (() => {

@@ -35,6 +35,7 @@ create table if not exists settings (
 alter table companies add column if not exists dob text;
 alter table companies add column if not exists ep_issue_date text;
 alter table companies add column if not exists ep_renew_date text;
+alter table companies add column if not exists dependants_json text;
 
 -- 关闭 RLS（内部工具，anon key 直接访问）
 alter table companies disable row level security;
