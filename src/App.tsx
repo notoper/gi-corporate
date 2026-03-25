@@ -514,6 +514,7 @@ export default function SecretaryOS() {
       managed: "", managedExpiry: "", managedStart: "",
       epStart: "", ndStart: "", secStart: "", addrStart: "",
       paidCapital: "", rorc: "", personnelChangeLogs: "[]", strikeOffDate: "", transferredDate: "", salary: "",
+      dob: "", epIssueDate: "", epRenewDate: "",
       directorsJson, shareholdersJson, registeredCapital,
     };
     setData(prev => [...prev, record]);
