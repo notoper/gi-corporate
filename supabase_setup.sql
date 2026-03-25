@@ -31,6 +31,11 @@ create table if not exists settings (
   value text
 );
 
+-- 新增字段（如已存在可忽略错误）
+alter table companies add column if not exists dob text;
+alter table companies add column if not exists ep_issue_date text;
+alter table companies add column if not exists ep_renew_date text;
+
 -- 关闭 RLS（内部工具，anon key 直接访问）
 alter table companies disable row level security;
 alter table logs disable row level security;

@@ -96,6 +96,9 @@ const mapRow = (row: Record<string, string>) => {
     strikeOffDate: "",
     transferredDate: "",
     salary: "",
+    dob: "",
+    epIssueDate: "",
+    epRenewDate: "",
   };
 };
 
@@ -154,6 +157,9 @@ const dbToRow = (db: any): CompanyRow => ({
   strikeOffDate: db.strike_off_date || "",
   transferredDate: db.transferred_date || "",
   salary: db.salary || "",
+  dob: db.dob || "",
+  epIssueDate: db.ep_issue_date || "",
+  epRenewDate: db.ep_renew_date || "",
 });
 
 const rowToDb = (row: CompanyRow) => ({
@@ -207,6 +213,9 @@ const rowToDb = (row: CompanyRow) => ({
   strike_off_date: row.strikeOffDate || "",
   transferred_date: row.transferredDate || "",
   salary: row.salary || "",
+  dob: row.dob || "",
+  ep_issue_date: row.epIssueDate || "",
+  ep_renew_date: row.epRenewDate || "",
 });
 
 type LogEntry = { id: number; time: string; action: string; company: string; field: string; oldVal: string; newVal: string };
@@ -1330,6 +1339,9 @@ export default function SecretaryOS() {
                   </div>
                 )}
               </div>
+              {Field({ label: "出生日期", fieldKey: "dob", isDate: true })}
+              {Field({ label: "EP Issue日期", fieldKey: "epIssueDate", isDate: true })}
+              {Field({ label: "EP Renew日期", fieldKey: "epRenewDate", isDate: true })}
             </div>
           )})}
 
